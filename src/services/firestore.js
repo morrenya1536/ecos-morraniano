@@ -15,7 +15,8 @@ import {
 import { db } from './firebase'
 
 // ─── Experiencias ──────────────────────────────────────────────────────────
-export const getExperiencias = () => getDocs(collection(db, 'experiencias'))
+export const getExperiencias = () =>
+  getDocs(query(collection(db, 'experiencias'), orderBy('creadoEn', 'desc')))
 
 export const getExperiencia = (id) => getDoc(doc(db, 'experiencias', id))
 
@@ -24,6 +25,14 @@ export const createExperiencia = (data) =>
 
 export const updateExperiencia = (id, data) =>
   updateDoc(doc(db, 'experiencias', id), data)
+
+export const deleteExperiencia = (id) => deleteDoc(doc(db, 'experiencias', id))
+
+export const subscribeExperiencias = (callback) =>
+  onSnapshot(
+    query(collection(db, 'experiencias'), orderBy('creadoEn', 'desc')),
+    callback
+  )
 
 // ─── Épocas ────────────────────────────────────────────────────────────────
 export const getEpocas = (experienciaId) =>
@@ -34,6 +43,12 @@ export const getEpocas = (experienciaId) =>
 
 export const createEpoca = (experienciaId, data) =>
   addDoc(collection(db, 'experiencias', experienciaId, 'epocas'), data)
+
+export const updateEpoca = (experienciaId, epocaId, data) =>
+  updateDoc(doc(db, 'experiencias', experienciaId, 'epocas', epocaId), data)
+
+export const deleteEpoca = (experienciaId, epocaId) =>
+  deleteDoc(doc(db, 'experiencias', experienciaId, 'epocas', epocaId))
 
 // ─── Puntos ────────────────────────────────────────────────────────────────
 export const getPuntos = (experienciaId, epocaId) =>
@@ -55,6 +70,19 @@ export const getGrupoByCodigo = (codigo) =>
 export const createGrupo = (data) =>
   addDoc(collection(db, 'grupos'), { ...data, creadoEn: serverTimestamp() })
 
+export const updateGrupo = (grupoId, data) =>
+  updateDoc(doc(db, 'grupos', grupoId), data)
+
+// Nota: deleteGrupo no elimina las subcolecciones; se necesitaría Cloud Function
+// para borrado completo. Los equipos huérfanos no afectan al juego.
+export const deleteGrupo = (grupoId) => deleteDoc(doc(db, 'grupos', grupoId))
+
+export const subscribeGruposByExperiencia = (experienciaId, callback) =>
+  onSnapshot(
+    query(collection(db, 'grupos'), where('experienciaId', '==', experienciaId)),
+    callback
+  )
+
 // ─── Equipos ───────────────────────────────────────────────────────────────
 export const getEquipos = (grupoId) =>
   getDocs(collection(db, 'grupos', grupoId, 'equipos'))
@@ -64,6 +92,15 @@ export const createEquipo = (grupoId, data) =>
     ...data,
     creadoEn: serverTimestamp(),
   })
+
+export const updateEquipo = (grupoId, equipoId, data) =>
+  updateDoc(doc(db, 'grupos', grupoId, 'equipos', equipoId), data)
+
+export const deleteEquipo = (grupoId, equipoId) =>
+  deleteDoc(doc(db, 'grupos', grupoId, 'equipos', equipoId))
+
+export const subscribeEquipos = (grupoId, callback) =>
+  onSnapshot(collection(db, 'grupos', grupoId, 'equipos'), callback)
 
 // ─── Progreso (tiempo real) ────────────────────────────────────────────────
 export const subscribeProgreso = (grupoId, equipoId, callback) =>
@@ -86,3 +123,14 @@ export const getRanking = (experienciaId) =>
     orderBy('puntuacion', 'desc'),
     orderBy('tiempo', 'asc')
   ))
+
+export const subscribeRanking = (experienciaId, callback) =>
+  onSnapshot(
+    query(
+      collection(db, 'rankings'),
+      where('experienciaId', '==', experienciaId),
+      orderBy('puntuacion', 'desc'),
+      orderBy('tiempo', 'asc')
+    ),
+    callback
+  )

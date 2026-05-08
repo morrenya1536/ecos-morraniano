@@ -10,6 +10,7 @@ export function useCoordinator() {
     setCargando(true)
     try {
       await loginCoordinador(email, password)
+      // el redirect lo maneja useEffect en CoordinatorLogin vía AuthContext
     } catch (e) {
       setError(mensajeError(e.code))
     } finally {
