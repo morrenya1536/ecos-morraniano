@@ -5,7 +5,7 @@ import { usePlayerAccess } from '../../hooks/usePlayerAccess'
 export default function PlayerAccess() {
   const navigate = useNavigate()
   const { acceder, error, cargando } = usePlayerAccess()
-  const [form, setForm] = useState({ codigoGrupo: '', nombreEquipo: '' })
+  const [form, setForm] = useState({ codigoGrupo: '', nombreEquipo: '', codigoEquipo: '' })
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -16,7 +16,7 @@ export default function PlayerAccess() {
   return (
     <main className="page page--centered page--dark">
       <h1>Escape Room</h1>
-      <p>Introduce el código de tu grupo para comenzar</p>
+      <p>Introduce los datos de tu equipo para comenzar</p>
 
       <form onSubmit={handleSubmit} className="form">
         <input
@@ -29,9 +29,16 @@ export default function PlayerAccess() {
         />
         <input
           type="text"
-          placeholder="Nombre de tu equipo"
+          placeholder="Nombre del equipo"
           value={form.nombreEquipo}
           onChange={(e) => setForm({ ...form, nombreEquipo: e.target.value })}
+          required
+        />
+        <input
+          type="text"
+          placeholder="Código del equipo"
+          value={form.codigoEquipo}
+          onChange={(e) => setForm({ ...form, codigoEquipo: e.target.value.toUpperCase() })}
           required
         />
         {error && <p className="error">{error}</p>}

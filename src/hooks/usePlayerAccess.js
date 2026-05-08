@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getGrupoByCodigo, getEquipos, createEquipo } from '../services/firestore'
+import { getGrupoByCodigo, getEquipos } from '../services/firestore'
 import { useGame } from '../context/GameContext'
 
 export function usePlayerAccess() {
@@ -7,7 +7,7 @@ export function usePlayerAccess() {
   const [error, setError] = useState(null)
   const [cargando, setCargando] = useState(false)
 
-  const acceder = async ({ codigoGrupo, nombreEquipo }) => {
+  const acceder = async ({ codigoGrupo, nombreEquipo, codigoEquipo }) => {
     setError(null)
     setCargando(true)
     try {
@@ -25,25 +25,23 @@ export function usePlayerAccess() {
         return false
       }
 
-      // Crear o reutilizar equipo
       const equiposSnap = await getEquipos(grupo.id)
-      const existente = equiposSnap.docs.find(
-        (d) => d.data().nombre.toLowerCase() === nombreEquipo.toLowerCase()
+      const equipoDoc = equiposSnap.docs.find(
+        (d) =>
+          d.data().nombre.toLowerCase() === nombreEquipo.toLowerCase() &&
+          d.data().codigo === codigoEquipo.toUpperCase()
       )
 
-      let equipoId
-      if (existente) {
-        equipoId = existente.id
-      } else {
-        const ref = await createEquipo(grupo.id, { nombre: nombreEquipo })
-        equipoId = ref.id
+      if (!equipoDoc) {
+        setError('Nombre de equipo o código de equipo incorrecto')
+        return false
       }
 
       setSesion({
         grupoId: grupo.id,
         grupoCodigo: codigoGrupo.toUpperCase(),
-        equipoId,
-        equipoNombre: nombreEquipo,
+        equipoId: equipoDoc.id,
+        equipoNombre: equipoDoc.data().nombre,
         experienciaId: grupo.experienciaId,
       })
 

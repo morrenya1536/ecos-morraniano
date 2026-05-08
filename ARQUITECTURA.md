@@ -126,6 +126,7 @@ Puede tener varios equipos jugando simultáneamente (competición).
 ```
 {
   nombre: string,
+  codigo: string,   // código que el coordinador reparte al equipo (ej: "XZ42")
   creadoEn: Timestamp,
 }
 ```
