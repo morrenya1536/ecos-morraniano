@@ -12,6 +12,54 @@ const TIPOS_RESPUESTA = {
   texto_libre: 'Texto libre',
   confirmacion_fisica: 'Confirmación física',
   colaborativa: 'Colaborativa',
+  escanear_qr: 'Escanear QR',
+}
+
+function CampoRespuesta({ tipo, valor, onChange }) {
+  if (tipo === 'numerica' || tipo === 'texto_libre') {
+    return (
+      <div className="form__group">
+        <label className="form__label">Respuesta correcta</label>
+        <input
+          type="text"
+          value={valor}
+          onChange={e => onChange(e.target.value)}
+          placeholder={tipo === 'numerica' ? '42' : 'respuesta...'}
+        />
+      </div>
+    )
+  }
+  if (tipo === 'escanear_qr') {
+    return (
+      <div className="form__group">
+        <label className="form__label">ID del QR esperado</label>
+        <input
+          type="text"
+          value={valor}
+          onChange={e => onChange(e.target.value)}
+          placeholder="puntoId del QR que el jugador debe escanear"
+        />
+      </div>
+    )
+  }
+  if (tipo === 'confirmacion_fisica' || tipo === 'colaborativa') {
+    return (
+      <div className="form__group">
+        <label className="form__label">Código de confirmación</label>
+        <input
+          type="text"
+          value={valor}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Ej: MORR42"
+        />
+        <span className="form__hint">
+          Número o palabra corta que estará grabada/escrita en el elemento físico.
+          El jugador deberá introducirla para confirmar que estuvo allí.
+        </span>
+      </div>
+    )
+  }
+  return null
 }
 
 const PUZZLE_VACIO = {
@@ -36,7 +84,6 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
   const [guardando, setGuardando] = useState(false)
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const tieneRespuesta = ['numerica', 'texto_libre'].includes(form.tipoRespuesta)
 
   const handleImagen = (e) => {
     const file = e.target.files[0]
@@ -113,17 +160,11 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
               ))}
             </select>
           </div>
-          {tieneRespuesta && (
-            <div className="form__group">
-              <label className="form__label">Respuesta correcta</label>
-              <input
-                type="text"
-                value={form.respuestaCorrecta}
-                onChange={e => s('respuestaCorrecta', e.target.value)}
-                placeholder={form.tipoRespuesta === 'numerica' ? '42' : 'respuesta...'}
-              />
-            </div>
-          )}
+          <CampoRespuesta
+            tipo={form.tipoRespuesta}
+            valor={form.respuestaCorrecta}
+            onChange={v => s('respuestaCorrecta', v)}
+          />
         </div>
       </div>
 

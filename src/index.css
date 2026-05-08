@@ -627,3 +627,10 @@ select option { background: var(--color-surface); }
 
 /* Success message */
 .success { color: var(--color-success); font-size: 0.875rem; }
+
+/* Form hint text */
+.form__hint {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}

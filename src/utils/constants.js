@@ -9,11 +9,12 @@ export const TIPOS_PUNTO = {
   MANUAL: 'manual',
 }
 
-export const TIPOS_PUZZLE = {
-  TEXTO: 'texto',
-  IMAGEN: 'imagen',
-  OPCION_MULTIPLE: 'opcion_multiple',
-  CODIGO: 'codigo',
+export const TIPOS_RESPUESTA_PUZZLE = {
+  NUMERICA: 'numerica',
+  TEXTO_LIBRE: 'texto_libre',
+  CONFIRMACION_FISICA: 'confirmacion_fisica',
+  COLABORATIVA: 'colaborativa',
+  ESCANEAR_QR: 'escanear_qr',
 }
 
 export const ESTADOS_PROGRESO = {
