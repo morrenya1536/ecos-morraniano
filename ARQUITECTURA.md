@@ -72,15 +72,22 @@ Cada época tiene N puntos geográficos que el equipo debe encontrar.
 
 ```
 {
-  nombre: string,
-  descripcion: string,
+  nombre: string,             // nombre interno del punto (solo visible al coordinador)
   lat: number,
   lng: number,
   orden: number,
-  tipo: 'qr' | 'gps' | 'manual',
-  codigoQR: string,           // valor del QR si tipo === 'qr'
-  radioMetros: number,        // radio de validación GPS (default: 15m)
-  imagenUrl: string,
+  tipo: 'normal' | 'colaborativo',
+  llegadaTexto: string,       // texto/narración que ven los jugadores al llegar
+  llegadaVideoUrl: string,
+  llegadaImagenUrl: string,
+  pistaEntrada: {
+    texto: string,            // pista para llegar a este punto (desde el punto anterior)
+    videoUrl: string,         // vídeo de la pista
+    imagenUrl: string,        // imagen de la pista
+  },
+  // Nota: para el punto 1 (orden=0), pistaEntrada es la pista inicial de la época
+  //       que los jugadores reciben en el briefing.
+  creadoEn: Timestamp,
 }
 ```
 

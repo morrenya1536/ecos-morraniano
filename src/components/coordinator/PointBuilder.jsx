@@ -20,31 +20,45 @@ const PUNTO_VACIO = {
   tipo: 'normal',
   llegadaTexto: '',
   llegadaVideoUrl: '',
+  pistaEntradaTexto: '',
+  pistaEntradaVideoUrl: '',
+  pistaEntradaImagenUrl: '',
 }
 
 function FormPunto({ initial, onGuardar, onCancelar }) {
   const [form, setForm] = useState(initial)
-  const [imagenFile, setImagenFile] = useState(null)
-  const [imagenPreview, setImagenPreview] = useState(null)
+  const [llegadaFile, setLlegadaFile] = useState(null)
+  const [llegadaPreview, setLlegadaPreview] = useState(null)
+  const [pistaFile, setPistaFile] = useState(null)
+  const [pistaPreview, setPistaPreview] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const handleImagen = (e) => {
+  const handleLlegadaImagen = (e) => {
     const file = e.target.files[0]
     if (!file) return
-    setImagenFile(file)
-    setImagenPreview(URL.createObjectURL(file))
+    setLlegadaFile(file)
+    setLlegadaPreview(URL.createObjectURL(file))
+  }
+
+  const handlePistaImagen = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setPistaFile(file)
+    setPistaPreview(URL.createObjectURL(file))
   }
 
   const submit = async (e) => {
     e.preventDefault()
     setGuardando(true)
-    try { await onGuardar(form, imagenFile) }
+    try { await onGuardar(form, { llegadaFile, pistaFile }) }
     finally { setGuardando(false) }
   }
 
   return (
     <form onSubmit={submit} className="builder-form">
+
+      {/* ── Datos generales ──────────────────────────────────────── */}
       <div className="builder-form__section">
         <div className="form-grid-2">
           <div className="form__group">
@@ -90,6 +104,52 @@ function FormPunto({ initial, onGuardar, onCancelar }) {
         </div>
       </div>
 
+      {/* ── Pista de entrada ─────────────────────────────────────── */}
+      <div className="builder-form__section">
+        <p className="builder-form__section-title">Pista de entrada</p>
+        <p className="form__hint">
+          Esta pista se muestra al jugador cuando se desbloquea este punto.
+          Para el primer punto de la época, es la pista inicial que reciben en el briefing.
+        </p>
+        <div className="form__group">
+          <label className="form__label">Texto de la pista</label>
+          <textarea
+            rows={3}
+            value={form.pistaEntradaTexto}
+            onChange={e => s('pistaEntradaTexto', e.target.value)}
+            placeholder="Descripción, acertijo o indicación para llegar a este punto"
+          />
+        </div>
+        <div className="form-grid-2">
+          <div className="form__group">
+            <label className="form__label">URL del vídeo</label>
+            <input
+              type="url"
+              value={form.pistaEntradaVideoUrl}
+              onChange={e => s('pistaEntradaVideoUrl', e.target.value)}
+              placeholder="https://..."
+            />
+          </div>
+          <div className="form__group">
+            <label className="form__label">Imagen</label>
+            {(pistaPreview || form.pistaEntradaImagenUrl) && (
+              <img
+                src={pistaPreview ?? form.pistaEntradaImagenUrl}
+                alt="Pista de entrada"
+                className="imagen-preview"
+              />
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handlePistaImagen}
+              className="input--file"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Contenido de llegada ──────────────────────────────────── */}
       <div className="builder-form__section">
         <p className="builder-form__section-title">Contenido de llegada</p>
         <div className="form__group">
@@ -112,9 +172,9 @@ function FormPunto({ initial, onGuardar, onCancelar }) {
         </div>
         <div className="form__group">
           <label className="form__label">Imagen de llegada</label>
-          {(imagenPreview || form.llegadaImagenUrl) && (
+          {(llegadaPreview || form.llegadaImagenUrl) && (
             <img
-              src={imagenPreview ?? form.llegadaImagenUrl}
+              src={llegadaPreview ?? form.llegadaImagenUrl}
               alt="Llegada"
               className="imagen-preview"
             />
@@ -122,7 +182,7 @@ function FormPunto({ initial, onGuardar, onCancelar }) {
           <input
             type="file"
             accept="image/*"
-            onChange={handleImagen}
+            onChange={handleLlegadaImagen}
             className="input--file"
           />
         </div>
@@ -182,37 +242,77 @@ export default function PointBuilder({ experienciaId, epocaId }) {
     ? 0
     : Math.max(...puntos.map(p => p.orden ?? 0)) + 1
 
-  const handleCrear = async (data, imagenFile) => {
+  const handleCrear = async (data, { llegadaFile, pistaFile }) => {
     const ref = await createPunto(experienciaId, epocaId, {
-      ...data,
+      nombre: data.nombre,
       lat: data.lat ? Number(data.lat) : null,
       lng: data.lng ? Number(data.lng) : null,
+      tipo: data.tipo,
+      llegadaTexto: data.llegadaTexto,
+      llegadaVideoUrl: data.llegadaVideoUrl,
       orden: nextOrden,
+      pistaEntrada: {
+        texto: data.pistaEntradaTexto,
+        videoUrl: data.pistaEntradaVideoUrl,
+        imagenUrl: '',
+      },
     })
-    if (imagenFile) {
-      const url = await uploadImagen(
+
+    // Las imágenes se suben después de tener el ID del punto
+    const imageUpdates = {}
+    if (llegadaFile) {
+      imageUpdates.llegadaImagenUrl = await uploadImagen(
         `experiencias/${experienciaId}/epocas/${epocaId}/puntos/${ref.id}/llegada`,
-        imagenFile
+        llegadaFile
       )
-      await updatePunto(experienciaId, epocaId, ref.id, { llegadaImagenUrl: url })
     }
+    if (pistaFile) {
+      // Dot notation para actualizar solo el campo anidado sin sobrescribir los demás
+      imageUpdates['pistaEntrada.imagenUrl'] = await uploadImagen(
+        `experiencias/${experienciaId}/epocas/${epocaId}/puntos/${ref.id}/pistaEntrada`,
+        pistaFile
+      )
+    }
+    if (Object.keys(imageUpdates).length > 0) {
+      await updatePunto(experienciaId, epocaId, ref.id, imageUpdates)
+    }
+
     setCreando(false)
     setExpandidoId(ref.id)
   }
 
-  const handleEditar = async (puntoId, data, imagenFile) => {
-    const updates = {
-      ...data,
-      lat: data.lat ? Number(data.lat) : null,
-      lng: data.lng ? Number(data.lng) : null,
-    }
-    if (imagenFile) {
-      updates.llegadaImagenUrl = await uploadImagen(
+  const handleEditar = async (puntoId, data, { llegadaFile, pistaFile }) => {
+    // Subir imágenes primero para incluir las URLs en la escritura final
+    let llegadaImagenUrl = data.llegadaImagenUrl ?? ''
+    let pistaImagenUrl = data.pistaEntradaImagenUrl ?? ''
+
+    if (llegadaFile) {
+      llegadaImagenUrl = await uploadImagen(
         `experiencias/${experienciaId}/epocas/${epocaId}/puntos/${puntoId}/llegada`,
-        imagenFile
+        llegadaFile
       )
     }
-    await updatePunto(experienciaId, epocaId, puntoId, updates)
+    if (pistaFile) {
+      pistaImagenUrl = await uploadImagen(
+        `experiencias/${experienciaId}/epocas/${epocaId}/puntos/${puntoId}/pistaEntrada`,
+        pistaFile
+      )
+    }
+
+    await updatePunto(experienciaId, epocaId, puntoId, {
+      nombre: data.nombre,
+      lat: data.lat ? Number(data.lat) : null,
+      lng: data.lng ? Number(data.lng) : null,
+      tipo: data.tipo,
+      llegadaTexto: data.llegadaTexto,
+      llegadaVideoUrl: data.llegadaVideoUrl,
+      llegadaImagenUrl,
+      pistaEntrada: {
+        texto: data.pistaEntradaTexto,
+        videoUrl: data.pistaEntradaVideoUrl,
+        imagenUrl: pistaImagenUrl,
+      },
+    })
     setEditandoId(null)
   }
 
@@ -275,6 +375,11 @@ export default function PointBuilder({ experienciaId, epocaId }) {
                   >↓</button>
                 </span>
                 <span className="builder-orden">{idx + 1}</span>
+                {idx === 0 && (
+                  <span className="badge badge--inicio" title="Su pista de entrada es la pista inicial de la época">
+                    Inicio
+                  </span>
+                )}
                 <strong>{punto.nombre}</strong>
                 <span className={`tipo-badge tipo-badge--${punto.tipo}`}>
                   {TIPOS_PUNTO[punto.tipo] ?? punto.tipo}
@@ -329,8 +434,16 @@ export default function PointBuilder({ experienciaId, epocaId }) {
 
             {editandoId === punto.id && (
               <FormPunto
-                initial={{ ...PUNTO_VACIO, ...punto, lat: punto.lat ?? '', lng: punto.lng ?? '' }}
-                onGuardar={(data, file) => handleEditar(punto.id, data, file)}
+                initial={{
+                  ...PUNTO_VACIO,
+                  ...punto,
+                  lat: punto.lat ?? '',
+                  lng: punto.lng ?? '',
+                  pistaEntradaTexto: punto.pistaEntrada?.texto ?? '',
+                  pistaEntradaVideoUrl: punto.pistaEntrada?.videoUrl ?? '',
+                  pistaEntradaImagenUrl: punto.pistaEntrada?.imagenUrl ?? '',
+                }}
+                onGuardar={(data, files) => handleEditar(punto.id, data, files)}
                 onCancelar={() => setEditandoId(null)}
               />
             )}
