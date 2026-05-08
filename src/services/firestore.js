@@ -41,8 +41,15 @@ export const getEpocas = (experienciaId) =>
     orderBy('orden')
   ))
 
+// Sin orderBy para evitar índice compuesto; se ordena en cliente
+export const subscribeEpocas = (experienciaId, callback) =>
+  onSnapshot(collection(db, 'experiencias', experienciaId, 'epocas'), callback)
+
 export const createEpoca = (experienciaId, data) =>
-  addDoc(collection(db, 'experiencias', experienciaId, 'epocas'), data)
+  addDoc(collection(db, 'experiencias', experienciaId, 'epocas'), {
+    ...data,
+    creadoEn: serverTimestamp(),
+  })
 
 export const updateEpoca = (experienciaId, epocaId, data) =>
   updateDoc(doc(db, 'experiencias', experienciaId, 'epocas', epocaId), data)
@@ -57,11 +64,50 @@ export const getPuntos = (experienciaId, epocaId) =>
     orderBy('orden')
   ))
 
+export const subscribePuntos = (experienciaId, epocaId, callback) =>
+  onSnapshot(
+    collection(db, 'experiencias', experienciaId, 'epocas', epocaId, 'puntos'),
+    callback
+  )
+
 export const createPunto = (experienciaId, epocaId, data) =>
   addDoc(
     collection(db, 'experiencias', experienciaId, 'epocas', epocaId, 'puntos'),
+    { ...data, creadoEn: serverTimestamp() }
+  )
+
+export const updatePunto = (experienciaId, epocaId, puntoId, data) =>
+  updateDoc(
+    doc(db, 'experiencias', experienciaId, 'epocas', epocaId, 'puntos', puntoId),
     data
   )
+
+export const deletePunto = (experienciaId, epocaId, puntoId) =>
+  deleteDoc(
+    doc(db, 'experiencias', experienciaId, 'epocas', epocaId, 'puntos', puntoId)
+  )
+
+// ─── Puzzles ───────────────────────────────────────────────────────────────
+const puzzlesCol = (expId, epId, ptId) =>
+  collection(db, 'experiencias', expId, 'epocas', epId, 'puntos', ptId, 'puzzles')
+
+const puzzleDoc = (expId, epId, ptId, pzId) =>
+  doc(db, 'experiencias', expId, 'epocas', epId, 'puntos', ptId, 'puzzles', pzId)
+
+export const subscribePuzzles = (experienciaId, epocaId, puntoId, callback) =>
+  onSnapshot(puzzlesCol(experienciaId, epocaId, puntoId), callback)
+
+export const createPuzzle = (experienciaId, epocaId, puntoId, data) =>
+  addDoc(puzzlesCol(experienciaId, epocaId, puntoId), {
+    ...data,
+    creadoEn: serverTimestamp(),
+  })
+
+export const updatePuzzle = (experienciaId, epocaId, puntoId, puzzleId, data) =>
+  updateDoc(puzzleDoc(experienciaId, epocaId, puntoId, puzzleId), data)
+
+export const deletePuzzle = (experienciaId, epocaId, puntoId, puzzleId) =>
+  deleteDoc(puzzleDoc(experienciaId, epocaId, puntoId, puzzleId))
 
 // ─── Grupos ────────────────────────────────────────────────────────────────
 export const getGrupoByCodigo = (codigo) =>
@@ -73,8 +119,6 @@ export const createGrupo = (data) =>
 export const updateGrupo = (grupoId, data) =>
   updateDoc(doc(db, 'grupos', grupoId), data)
 
-// Nota: deleteGrupo no elimina las subcolecciones; se necesitaría Cloud Function
-// para borrado completo. Los equipos huérfanos no afectan al juego.
 export const deleteGrupo = (grupoId) => deleteDoc(doc(db, 'grupos', grupoId))
 
 export const subscribeGruposByExperiencia = (experienciaId, callback) =>

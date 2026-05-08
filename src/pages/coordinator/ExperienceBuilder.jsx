@@ -8,6 +8,7 @@ import {
 } from '../../services/firestore'
 import { uploadImagen } from '../../services/storage'
 import LoadingScreen from '../../components/shared/LoadingScreen'
+import EpochBuilder from '../../components/coordinator/EpochBuilder'
 
 const FORM_VACIO = { nombre: '', descripcion: '', activa: false }
 
@@ -24,6 +25,7 @@ export default function ExperienceBuilder() {
   const [cargando, setCargando] = useState(!esNueva)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState(null)
+  const [guardado, setGuardado] = useState(false)
 
   useEffect(() => {
     if (esNueva) return
@@ -65,11 +67,21 @@ export default function ExperienceBuilder() {
       if (imagenFile) {
         const url = await uploadImagen(`experiencias/${id}/portada`, imagenFile)
         await updateExperiencia(id, { imagenPortadaUrl: url })
+        setImagenFile(null)
+        setImagenUrlActual(url)
+        setImagenPreview(null)
       }
 
-      navigate('/coordinador')
+      if (esNueva) {
+        // Navega a edición para que el coordinador pueda añadir épocas inmediatamente
+        navigate(`/coordinador/experiencias/${id}`)
+      } else {
+        setGuardado(true)
+        setTimeout(() => setGuardado(false), 2500)
+      }
     } catch {
       setError('Error al guardar. Inténtalo de nuevo.')
+    } finally {
       setGuardando(false)
     }
   }
@@ -83,8 +95,14 @@ export default function ExperienceBuilder() {
           <Link to="/coordinador" className="back-link">← Volver</Link>
           <h1>{esNueva ? 'Nueva experiencia' : 'Editar experiencia'}</h1>
         </div>
+        {!esNueva && (
+          <Link to={`/coordinador/grupos/${experienciaId}`} className="btn btn--ghost btn--small">
+            Gestionar grupos
+          </Link>
+        )}
       </header>
 
+      {/* ── Formulario de info básica ─────────────────────────────── */}
       <form onSubmit={handleSubmit} className="form form--builder">
         <div className="form__group">
           <label className="form__label">Nombre *</label>
@@ -136,24 +154,24 @@ export default function ExperienceBuilder() {
           </label>
         </div>
 
-        {!esNueva && (
-          <div className="form__group">
-            <label className="form__label">Épocas</label>
-            <div className="placeholder">
-              <p>El editor de épocas se añadirá en la siguiente fase.</p>
-            </div>
-          </div>
-        )}
-
         {error && <p className="error">{error}</p>}
+        {guardado && <p className="success">✓ Cambios guardados</p>}
 
         <div className="form__actions">
           <Link to="/coordinador" className="btn btn--ghost">Cancelar</Link>
           <button type="submit" disabled={guardando} className="btn btn--primary">
-            {guardando ? 'Guardando...' : 'Guardar'}
+            {guardando ? 'Guardando...' : esNueva ? 'Crear y continuar' : 'Guardar'}
           </button>
         </div>
       </form>
+
+      {/* ── Gestor de épocas (fuera del <form> para evitar anidamiento) */}
+      {!esNueva && (
+        <div className="builder-section-wrapper">
+          <hr className="builder-divider" />
+          <EpochBuilder experienciaId={experienciaId} />
+        </div>
+      )}
     </main>
   )
 }

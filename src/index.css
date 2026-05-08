@@ -440,3 +440,190 @@ select option { background: var(--color-surface); }
   border: 1px dashed var(--color-surface-2);
   border-radius: var(--radius);
 }
+
+/* ─── Builder accordion ──────────────────────────────────────────────────── */
+.builder-section-wrapper {
+  margin-top: var(--gap-lg);
+}
+
+.builder-divider {
+  border: none;
+  border-top: 1px solid var(--color-surface-2);
+  margin-bottom: var(--gap-lg);
+}
+
+.builder-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.builder-section--nested { padding-top: 4px; }
+
+.builder-list { display: flex; flex-direction: column; gap: 6px; }
+
+/* Levels with left-border color coding */
+.builder-item {
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--color-surface-2);
+}
+
+.builder-item--epoch {
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface);
+}
+
+.builder-item--punto {
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-bg);
+}
+
+.builder-item--puzzle {
+  border-left: 3px solid var(--color-success);
+  background: rgba(76, 175, 80, 0.04);
+}
+
+.builder-item__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px var(--gap);
+}
+
+.builder-item__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.builder-orden {
+  min-width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+
+.builder-children {
+  border-top: 1px solid var(--color-surface-2);
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.reorder-btns { display: flex; gap: 2px; flex-shrink: 0; }
+
+/* Builder forms (inline inside accordion items) */
+.builder-form {
+  padding: var(--gap);
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.builder-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: var(--gap);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.builder-form__section:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.builder-form__section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* 2-column grid for forms */
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+}
+
+@media (max-width: 540px) {
+  .form-grid-2 { grid-template-columns: 1fr; }
+}
+
+/* Type badges for epochs/points/puzzles */
+.tipo-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tipo-badge--logica      { background: #1e3a5f; color: #60a5fa; }
+.tipo-badge--observacion { background: #3b2a00; color: #fbbf24; }
+.tipo-badge--fisico      { background: #1a3a1a; color: #4ade80; }
+.tipo-badge--nocturno    { background: #1a1a3a; color: #a78bfa; }
+.tipo-badge--normal      { background: #1e3a5f; color: #60a5fa; }
+.tipo-badge--colaborativo { background: #3b1a3a; color: #f472b6; }
+.tipo-badge--numerica      { background: #1e3a5f; color: #60a5fa; }
+.tipo-badge--texto_libre   { background: #1a3a2a; color: #4ade80; }
+.tipo-badge--confirmacion_fisica { background: #3b2a00; color: #fbbf24; }
+.tipo-badge--colaborativa  { background: #3b1a3a; color: #f472b6; }
+
+.badge--conjunta { background: #1a3a2a; color: #34d399; }
+
+/* QR info block */
+.qr-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-surface-2);
+  border-radius: var(--radius);
+  padding: 10px var(--gap);
+  flex-wrap: wrap;
+}
+
+.qr-info__label { font-size: 0.8125rem; color: var(--color-text-muted); flex-shrink: 0; }
+
+.qr-info__code {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  color: var(--color-warning);
+  word-break: break-all;
+  flex: 1;
+}
+
+/* Puzzle enunciado preview in list */
+.puzzle-enunciado {
+  font-size: 0.875rem;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+/* Success message */
+.success { color: var(--color-success); font-size: 0.875rem; }
