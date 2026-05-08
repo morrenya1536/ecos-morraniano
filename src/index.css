@@ -1,0 +1,160 @@
+/* ─── Reset y base ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --color-bg: #0f0f1a;
+  --color-surface: #1a1a2e;
+  --color-surface-2: #16213e;
+  --color-accent: #e94560;
+  --color-accent-2: #0f3460;
+  --color-text: #e0e0e0;
+  --color-text-muted: #888;
+  --color-success: #4caf50;
+  --color-error: #e94560;
+  --color-warning: #ff9800;
+
+  --radius: 8px;
+  --radius-lg: 16px;
+  --gap: 16px;
+  --gap-lg: 24px;
+
+  --font: 'Segoe UI', system-ui, sans-serif;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Layout ────────────────────────────────────────────────────────────── */
+.page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: var(--gap);
+  max-width: 480px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.page--centered {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: var(--gap-lg);
+}
+
+.page--dark { background: var(--color-bg); }
+
+.page--fullscreen {
+  max-width: 100%;
+  padding: 0;
+}
+
+.page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: var(--gap);
+  border-bottom: 1px solid var(--color-surface-2);
+  margin-bottom: var(--gap);
+}
+
+.page__content { flex: 1; }
+
+/* ─── Formularios ───────────────────────────────────────────────────────── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  width: 100%;
+  max-width: 320px;
+}
+
+input {
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-2);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-size: 1rem;
+  padding: 12px 16px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+input:focus { border-color: var(--color-accent); }
+input::placeholder { color: var(--color-text-muted); }
+
+/* ─── Botones ───────────────────────────────────────────────────────────── */
+.btn {
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 12px 24px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s;
+}
+
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn--primary { background: var(--color-accent); }
+.btn--ghost { background: transparent; border: 1px solid var(--color-text-muted); }
+.btn--small { padding: 6px 14px; font-size: 0.875rem; }
+.btn--large { padding: 16px 32px; font-size: 1.125rem; width: 100%; }
+
+/* ─── Mensajes ──────────────────────────────────────────────────────────── */
+.error { color: var(--color-error); font-size: 0.875rem; }
+
+/* ─── Placeholder ───────────────────────────────────────────────────────── */
+.placeholder {
+  background: var(--color-surface);
+  border: 2px dashed var(--color-surface-2);
+  border-radius: var(--radius-lg);
+  padding: var(--gap-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* ─── Loading ───────────────────────────────────────────────────────────── */
+.loading-screen {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  color: var(--color-text-muted);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-surface-2);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Misc ──────────────────────────────────────────────────────────────── */
+.link-small { font-size: 0.875rem; color: var(--color-text-muted); }
+.link-small a { color: var(--color-accent); text-decoration: none; }
+h1 { font-size: 1.5rem; font-weight: 700; }
