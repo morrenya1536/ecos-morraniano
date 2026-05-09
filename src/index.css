@@ -700,6 +700,11 @@ select option { background: var(--color-surface); }
 .modal__titulo { font-size: 1.125rem; font-weight: 700; }
 .modal__texto  { color: var(--color-text-muted); font-size: 0.9375rem; line-height: 1.6; }
 .modal__actions { display: flex; gap: var(--gap); justify-content: flex-end; margin-top: 4px; }
+.modal__header { display: flex; align-items: center; justify-content: space-between; }
+.modal__body--center { display: flex; flex-direction: column; align-items: center; gap: var(--gap); }
+.modal__codigo { font-family: 'Courier New', monospace; font-size: 0.75rem; color: var(--color-text-muted); word-break: break-all; text-align: center; }
+.modal__footer { display: flex; gap: var(--gap); justify-content: center; }
+.modal--qr { max-width: 320px; }
 
 /* ─── PlayerHome ─────────────────────────────────────────────────────────── */
 .player-home { gap: var(--gap); padding-bottom: var(--gap-lg); }

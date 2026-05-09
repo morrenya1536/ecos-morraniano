@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { QRCodeCanvas } from 'qrcode.react'
 import {
   subscribePuntos,
   createPunto,
@@ -200,6 +201,60 @@ function FormPunto({ initial, onGuardar, onCancelar }) {
   )
 }
 
+function ModalQr({ puntoId, onCerrar }) {
+  const canvasRef = useRef(null)
+
+  const descargar = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const url = canvas.toDataURL('image/png')
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `qr-${puntoId}.png`
+    a.click()
+  }
+
+  const imprimir = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const url = canvas.toDataURL('image/png')
+    const win = window.open('', '_blank')
+    win.document.write(
+      `<!DOCTYPE html><html><head><title>QR — ${puntoId}</title></head>` +
+      `<body style="text-align:center;padding:40px;font-family:monospace">` +
+      `<img src="${url}" style="display:block;margin:0 auto"/>` +
+      `<p style="margin-top:16px;font-size:12px;word-break:break-all">${puntoId}</p>` +
+      `</body></html>`
+    )
+    win.document.close()
+    win.focus()
+    win.print()
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCerrar}>
+      <div className="modal modal--qr" onClick={e => e.stopPropagation()}>
+        <div className="modal__header">
+          <h3 className="modal__titulo">QR del punto</h3>
+          <button type="button" onClick={onCerrar} className="btn btn--ghost btn--icon">✕</button>
+        </div>
+        <div className="modal__body--center">
+          <QRCodeCanvas ref={canvasRef} value={puntoId} size={220} level="M" />
+          <code className="modal__codigo">{puntoId}</code>
+        </div>
+        <div className="modal__footer">
+          <button type="button" onClick={descargar} className="btn btn--ghost btn--small">
+            Descargar QR
+          </button>
+          <button type="button" onClick={imprimir} className="btn btn--ghost btn--small">
+            Imprimir QR
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function QrInfo({ puntoId }) {
   const [copiado, setCopiado] = useState(false)
 
@@ -227,6 +282,7 @@ export default function PointBuilder({ experienciaId, epocaId }) {
   const [editandoId, setEditandoId] = useState(null)
   const [expandidoId, setExpandidoId] = useState(null)
   const [confirmar, setConfirmar] = useState(null)
+  const [qrPuntoId, setQrPuntoId] = useState(null)
 
   useEffect(() => {
     return subscribePuntos(experienciaId, epocaId, (snap) => {
@@ -330,6 +386,10 @@ export default function PointBuilder({ experienciaId, epocaId }) {
 
   return (
     <div className="builder-section builder-section--nested">
+      {qrPuntoId && (
+        <ModalQr puntoId={qrPuntoId} onCerrar={() => setQrPuntoId(null)} />
+      )}
+
       <div className="section-header">
         <h3>Puntos ({puntos.length})</h3>
         <button
@@ -397,6 +457,13 @@ export default function PointBuilder({ experienciaId, epocaId }) {
                   className="btn btn--ghost btn--small"
                 >
                   {expandidoId === punto.id ? 'Cerrar' : 'Puzzles'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQrPuntoId(punto.id)}
+                  className="btn btn--ghost btn--small"
+                >
+                  Ver QR
                 </button>
                 <button
                   type="button"
