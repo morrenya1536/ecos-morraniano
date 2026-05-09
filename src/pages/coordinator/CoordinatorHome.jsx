@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useCoordinator } from '../../hooks/useCoordinator'
@@ -9,6 +9,7 @@ import {
   subscribeProgresoEpoca,
   subscribeProgreso,
   resetearFase,
+  getEpocas,
 } from '../../services/firestore'
 import LoadingScreen from '../../components/shared/LoadingScreen'
 
@@ -43,9 +44,6 @@ function useElapsedCoord(progreso) {
 }
 
 function EquipoRow({ grupoId, equipo, modoGrupo }) {
-  // undefined = cargando (suscripción no ha respondido aún)
-  // null = confirmado sin progreso
-  // object = progreso real
   const [progreso, setProgreso] = useState(undefined)
   const [epocaActivaId, setEpocaActivaId] = useState(null)
   const elapsed = useElapsedCoord(progreso ?? null)
@@ -61,30 +59,19 @@ function EquipoRow({ grupoId, equipo, modoGrupo }) {
     const epocaAsignada = equipo.epocaAsignadaId || null
 
     if (modoGrupo === 'colaborativo' && epocaAsignada) {
-      // Colaborativo con fase asignada: escuchar esa época concreta
-      const ruta = `grupos/${grupoId}/equipos/${equipo.id}/progreso/${epocaAsignada}`
-      console.log('[CoordPanel] Suscribiendo doc:', ruta)
       setEpocaActivaId(epocaAsignada)
       return subscribeProgresoEpoca(grupoId, equipo.id, epocaAsignada, snap => {
-        const data = snap.exists() ? snap.data() : null
-        console.log('[CoordPanel] Snapshot recibido:', ruta, snap.exists() ? data?.estado : '(no existe)')
-        setProgreso(data)
+        setProgreso(snap.exists() ? snap.data() : null)
       })
     }
 
-    // Competitivo o sin época asignada: escuchar toda la colección de progreso
-    const ruta = `grupos/${grupoId}/equipos/${equipo.id}/progreso`
-    console.log('[CoordPanel] Suscribiendo colección:', ruta)
     return subscribeProgreso(grupoId, equipo.id, snap => {
       if (snap.empty) {
-        console.log('[CoordPanel] Colección vacía:', ruta)
         setEpocaActivaId(null)
         setProgreso(null)
         return
       }
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      console.log('[CoordPanel] Docs progreso:', ruta, docs.map(d => `${d.id.slice(0, 6)}:${d.estado}`))
-      // Prioridad: activo/pausado → después el más reciente completado
       const vivo = docs.find(d => d.estado === 'activo' || d.estado === 'pausado')
       const ref = vivo ?? [...docs].sort(
         (a, b) => (b.tiempoAcumuladoMs ?? 0) - (a.tiempoAcumuladoMs ?? 0)
@@ -101,8 +88,6 @@ function EquipoRow({ grupoId, equipo, modoGrupo }) {
     : progreso === null ? 'No iniciado'
     : '…'
 
-  // En colaborativo, la época a resetear es siempre la asignada;
-  // en competitivo, la que hayamos detectado como activa
   const epocaResetId = (modoGrupo === 'colaborativo' ? equipo.epocaAsignadaId : epocaActivaId) || null
 
   const handleResetear = async () => {
@@ -130,12 +115,8 @@ function EquipoRow({ grupoId, equipo, modoGrupo }) {
         )}
       </div>
 
-      {/* El botón de resetear aparece siempre que haya época identificada */}
       {epocaResetId && !confirmando && (
-        <button
-          onClick={() => setConfirmando(true)}
-          className="btn btn--ghost btn--small"
-        >
+        <button onClick={() => setConfirmando(true)} className="btn btn--ghost btn--small">
           Resetear
         </button>
       )}
@@ -144,11 +125,7 @@ function EquipoRow({ grupoId, equipo, modoGrupo }) {
           <span className="text-muted text-small">
             ¿Resetear la fase de «{equipo.nombre}»? El equipo tendrá que empezar desde el principio.
           </span>
-          <button
-            onClick={handleResetear}
-            disabled={reseteando}
-            className="btn btn--danger btn--small"
-          >
+          <button onClick={handleResetear} disabled={reseteando} className="btn btn--danger btn--small">
             {reseteando ? '...' : 'Sí, resetear'}
           </button>
           <button onClick={() => setConfirmando(false)} className="btn btn--ghost btn--small">
@@ -160,46 +137,295 @@ function EquipoRow({ grupoId, equipo, modoGrupo }) {
   )
 }
 
-function GrupoCard({ grupo }) {
+// ─── GrupoCardPartidas ─────────────────────────────────────────────────────
+// Collapsible card that computes group estado for section placement.
+
+function GrupoCardPartidas({ grupo, onEstadoChange }) {
+  const modoGrupo = grupo.modo ?? 'competitivo'
   const [equipos, setEquipos] = useState([])
+  const [epocas, setEpocas] = useState(null)
+  const [progresoPorEquipo, setProgresoPorEquipo] = useState({})
+  const [abierto, setAbierto] = useState(false)
+
+  useEffect(() =>
+    subscribeEquipos(grupo.id, snap => {
+      setEquipos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    }),
+  [grupo.id])
 
   useEffect(() => {
-    return subscribeEquipos(grupo.id, snap => {
-      setEquipos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    })
-  }, [grupo.id])
+    if (!grupo.experienciaId) { setEpocas([]); return }
+    getEpocas(grupo.experienciaId)
+      .then(snap => setEpocas(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+      .catch(() => setEpocas([]))
+  }, [grupo.experienciaId])
 
-  if (equipos.length === 0) return null
+  // Rebuild progreso subscriptions whenever the set of equipo IDs changes
+  const equipoIdsKey = equipos.map(e => e.id).sort().join(',')
+  useEffect(() => {
+    if (!equipos.length) return
+    const cancelFns = equipos.map(eq =>
+      subscribeProgreso(grupo.id, eq.id, snap => {
+        setProgresoPorEquipo(prev => ({
+          ...prev,
+          [eq.id]: snap.docs.map(d => ({ id: d.id, ...d.data() })),
+        }))
+      })
+    )
+    return () => cancelFns.forEach(c => c())
+  }, [grupo.id, equipoIdsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const modoGrupo = grupo.modo ?? 'competitivo'
+  const estadoGrupo = useMemo(() => {
+    if (!equipos.length || epocas === null) return 'pendiente'
+    const todosCargados = equipos.every(eq => eq.id in progresoPorEquipo)
+    if (!todosCargados) return 'pendiente'
+
+    const conProgreso = equipos.filter(eq => (progresoPorEquipo[eq.id] ?? []).length > 0)
+    if (!conProgreso.length) return 'pendiente'
+
+    if (modoGrupo === 'colaborativo') {
+      const epocasNormales = epocas.filter(e => !e.esConjunta)
+      if (!epocasNormales.length) return 'en-curso'
+      const finalizado = epocasNormales.every(epoca =>
+        equipos.some(eq =>
+          (progresoPorEquipo[eq.id] ?? []).some(p => p.id === epoca.id && p.estado === 'completado')
+        )
+      )
+      return finalizado ? 'finalizado' : 'en-curso'
+    }
+
+    // Competitivo: todos los equipos completaron todas las épocas
+    if (!epocas.length) return 'en-curso'
+    const finalizado = equipos.every(eq =>
+      epocas.every(epoca =>
+        (progresoPorEquipo[eq.id] ?? []).some(p => p.id === epoca.id && p.estado === 'completado')
+      )
+    )
+    return finalizado ? 'finalizado' : 'en-curso'
+  }, [equipos, epocas, progresoPorEquipo, modoGrupo])
+
+  useEffect(() => {
+    onEstadoChange(grupo.id, estadoGrupo)
+  }, [grupo.id, estadoGrupo, onEstadoChange])
 
   return (
     <div className="partida-card">
-      <div className="partida-card__header">
-        <h3 className="partida-card__nombre">{grupo.nombre}</h3>
+      <button className="partida-card__toggle" onClick={() => setAbierto(v => !v)}>
+        <span className="partida-card__nombre">{grupo.nombre}</span>
         <span className="modo-badge">
           {modoGrupo === 'colaborativo' ? 'Colaborativo' : 'Competitivo'}
         </span>
-        <Link
-          to={`/coordinador/grupos/${grupo.experienciaId}`}
-          className="btn btn--ghost btn--small"
-        >
-          Gestionar
-        </Link>
-      </div>
-      <div className="partida-card__equipos">
-        {equipos.map(eq => (
-          <EquipoRow
-            key={eq.id}
-            grupoId={grupo.id}
-            equipo={eq}
-            modoGrupo={modoGrupo}
-          />
-        ))}
-      </div>
+        {equipos.length > 0 && (
+          <span className="text-muted text-small">{equipos.length} equipos</span>
+        )}
+        <span className="partida-card__chevron">{abierto ? '▲' : '▼'}</span>
+      </button>
+
+      {abierto && (
+        <div className="partida-card__body">
+          <div className="partida-card__body-actions">
+            <Link to={`/coordinador/grupos/${grupo.experienciaId}`} className="btn btn--ghost btn--small">
+              Gestionar
+            </Link>
+          </div>
+          <div className="partida-card__equipos">
+            {equipos.map(eq => (
+              <EquipoRow key={eq.id} grupoId={grupo.id} equipo={eq} modoGrupo={modoGrupo} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+// ─── TabPartidas ───────────────────────────────────────────────────────────
+
+const SECCIONES_PARTIDAS = [
+  { key: 'en-curso',   label: 'En curso' },
+  { key: 'pendiente',  label: 'Pendientes' },
+  { key: 'finalizado', label: 'Finalizadas' },
+]
+
+function TabPartidas({ grupos, experiencias }) {
+  const [estadosGrupo, setEstadosGrupo] = useState({})
+  const [seccionesAbiertas, setSeccionesAbiertas] = useState({
+    'en-curso': true,
+    pendiente: true,
+    finalizado: false,
+  })
+
+  const handleEstadoChange = useCallback((grupoId, estado) => {
+    setEstadosGrupo(prev => {
+      if (prev[grupoId] === estado) return prev
+      return { ...prev, [grupoId]: estado }
+    })
+  }, [])
+
+  const expActivasSet = useMemo(
+    () => new Set(experiencias.filter(e => e.activa).map(e => e.id)),
+    [experiencias]
+  )
+  const gruposActivos = useMemo(
+    () => grupos.filter(g => expActivasSet.has(g.experienciaId)),
+    [grupos, expActivasSet]
+  )
+
+  const gruposPorEstado = useMemo(() => {
+    const map = { 'en-curso': [], pendiente: [], finalizado: [] }
+    gruposActivos.forEach(g => {
+      const estado = estadosGrupo[g.id] ?? 'pendiente'
+      map[estado].push(g)
+    })
+    return map
+  }, [gruposActivos, estadosGrupo])
+
+  if (!gruposActivos.length) {
+    return (
+      <div className="empty-state">
+        <p>No hay partidas activas.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="partidas-secciones">
+      {SECCIONES_PARTIDAS.map(({ key, label }) => {
+        const lista = gruposPorEstado[key]
+        if (!lista.length) return null
+        return (
+          <section key={key} className="partidas-seccion">
+            <button
+              className="partidas-seccion__header"
+              onClick={() => setSeccionesAbiertas(prev => ({ ...prev, [key]: !prev[key] }))}
+            >
+              <span className="partidas-seccion__titulo">{label}</span>
+              <span className="partidas-seccion__count">{lista.length}</span>
+              <span className="partidas-seccion__chevron">{seccionesAbiertas[key] ? '▲' : '▼'}</span>
+            </button>
+            {seccionesAbiertas[key] && (
+              <div className="partidas-seccion__body">
+                {lista.map(g => (
+                  <GrupoCardPartidas key={g.id} grupo={g} onEstadoChange={handleEstadoChange} />
+                ))}
+              </div>
+            )}
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── TabGrupos ─────────────────────────────────────────────────────────────
+
+function GrupoResumen({ grupo, expById }) {
+  const [nEquipos, setNEquipos] = useState(null)
+  const modoGrupo = grupo.modo ?? 'competitivo'
+  const exp = expById[grupo.experienciaId]
+
+  useEffect(() =>
+    subscribeEquipos(grupo.id, snap => setNEquipos(snap.size)),
+  [grupo.id])
+
+  return (
+    <div className="card">
+      <div className="card__header">
+        <div className="card__title-group">
+          <h3 className="card__title">{grupo.nombre}</h3>
+          <span className="modo-badge">
+            {modoGrupo === 'colaborativo' ? 'Colaborativo' : 'Competitivo'}
+          </span>
+          {nEquipos !== null && (
+            <span className="text-muted text-small">{nEquipos} equipos</span>
+          )}
+        </div>
+        <div className="card__actions">
+          <Link to={`/coordinador/grupos/${grupo.experienciaId}`} className="btn btn--ghost btn--small">
+            Gestionar
+          </Link>
+        </div>
+      </div>
+      {exp && <p className="card__desc">{exp.nombre}</p>}
+    </div>
+  )
+}
+
+function TabGrupos({ grupos, experiencias }) {
+  const expById = useMemo(() => {
+    const m = {}
+    experiencias.forEach(e => { m[e.id] = e })
+    return m
+  }, [experiencias])
+
+  if (!grupos.length) {
+    return <div className="empty-state"><p>No hay grupos creados.</p></div>
+  }
+
+  return (
+    <div className="card-list">
+      {grupos.map(g => (
+        <GrupoResumen key={g.id} grupo={g} expById={expById} />
+      ))}
+    </div>
+  )
+}
+
+// ─── TabExperiencias ───────────────────────────────────────────────────────
+
+function TabExperiencias({ experiencias }) {
+  return (
+    <div>
+      <div className="section-header" style={{ marginBottom: 'var(--gap)' }}>
+        <span />
+        <Link to="/coordinador/experiencias/nueva" className="btn btn--small">
+          + Nueva
+        </Link>
+      </div>
+
+      {!experiencias.length ? (
+        <div className="empty-state">
+          <p>Aún no hay experiencias.</p>
+          <Link to="/coordinador/experiencias/nueva" className="btn">
+            Crear primera experiencia
+          </Link>
+        </div>
+      ) : (
+        <div className="card-list">
+          {experiencias.map(exp => (
+            <div key={exp.id} className="card">
+              <div className="card__header">
+                <div className="card__title-group">
+                  <h3 className="card__title">{exp.nombre}</h3>
+                  <span className={`badge ${exp.activa ? 'badge--active' : 'badge--inactive'}`}>
+                    {exp.activa ? 'Activa' : 'Inactiva'}
+                  </span>
+                </div>
+                <div className="card__actions">
+                  <Link to={`/coordinador/grupos/${exp.id}`} className="btn btn--ghost btn--small">
+                    Grupos
+                  </Link>
+                  <Link to={`/coordinador/experiencias/${exp.id}`} className="btn btn--small">
+                    Editar
+                  </Link>
+                </div>
+              </div>
+              {exp.descripcion && <p className="card__desc">{exp.descripcion}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── CoordinatorHome ───────────────────────────────────────────────────────
+
+const TABS = [
+  { key: 'partidas',     label: 'Partidas' },
+  { key: 'grupos',       label: 'Grupos' },
+  { key: 'experiencias', label: 'Experiencias' },
+]
 
 export default function CoordinatorHome() {
   const { coordinador } = useAuth()
@@ -207,10 +433,11 @@ export default function CoordinatorHome() {
   const [experiencias, setExperiencias] = useState([])
   const [grupos, setGrupos] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [activeTab, setActiveTab] = useState('partidas')
 
   useEffect(() => {
-    const unsubExp = subscribeExperiencias((snap) => {
-      setExperiencias(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    const unsubExp = subscribeExperiencias(snap => {
+      setExperiencias(snap.docs.map(d => ({ id: d.id, ...d.data() })))
       setCargando(false)
     })
     const unsubGrupos = subscribeGruposAll(snap => {
@@ -220,9 +447,6 @@ export default function CoordinatorHome() {
   }, [])
 
   if (cargando) return <LoadingScreen mensaje="Cargando..." />
-
-  const expActivasSet = new Set(experiencias.filter(e => e.activa).map(e => e.id))
-  const gruposActivos = grupos.filter(g => expActivasSet.has(g.experienciaId))
 
   return (
     <main className="page panel">
@@ -234,68 +458,27 @@ export default function CoordinatorHome() {
         <button onClick={logout} className="btn btn--ghost btn--small">Cerrar sesión</button>
       </header>
 
-      {/* ── Partidas activas ─────────────────────────────────────────── */}
-      {gruposActivos.length > 0 && (
-        <section className="page__content">
-          <div className="section-header">
-            <h2>Partidas activas</h2>
-          </div>
-          <div className="card-list">
-            {gruposActivos.map(g => (
-              <GrupoCard key={g.id} grupo={g} />
-            ))}
-          </div>
-        </section>
-      )}
+      <nav className="coord-tabs">
+        {TABS.map(tab => (
+          <button
+            key={tab.key}
+            className={`coord-tab-btn${activeTab === tab.key ? ' coord-tab-btn--active' : ''}`}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
 
-      {/* ── Experiencias ─────────────────────────────────────────────── */}
       <section className="page__content">
-        <div className="section-header">
-          <h2>Experiencias</h2>
-          <Link to="/coordinador/experiencias/nueva" className="btn btn--small">
-            + Nueva
-          </Link>
-        </div>
-
-        {experiencias.length === 0 ? (
-          <div className="empty-state">
-            <p>Aún no hay experiencias.</p>
-            <Link to="/coordinador/experiencias/nueva" className="btn">
-              Crear primera experiencia
-            </Link>
-          </div>
-        ) : (
-          <div className="card-list">
-            {experiencias.map((exp) => (
-              <div key={exp.id} className="card">
-                <div className="card__header">
-                  <div className="card__title-group">
-                    <h3 className="card__title">{exp.nombre}</h3>
-                    <span className={`badge ${exp.activa ? 'badge--active' : 'badge--inactive'}`}>
-                      {exp.activa ? 'Activa' : 'Inactiva'}
-                    </span>
-                  </div>
-                  <div className="card__actions">
-                    <Link
-                      to={`/coordinador/grupos/${exp.id}`}
-                      className="btn btn--ghost btn--small"
-                    >
-                      Grupos
-                    </Link>
-                    <Link
-                      to={`/coordinador/experiencias/${exp.id}`}
-                      className="btn btn--small"
-                    >
-                      Editar
-                    </Link>
-                  </div>
-                </div>
-                {exp.descripcion && (
-                  <p className="card__desc">{exp.descripcion}</p>
-                )}
-              </div>
-            ))}
-          </div>
+        {activeTab === 'partidas' && (
+          <TabPartidas grupos={grupos} experiencias={experiencias} />
+        )}
+        {activeTab === 'grupos' && (
+          <TabGrupos grupos={grupos} experiencias={experiencias} />
+        )}
+        {activeTab === 'experiencias' && (
+          <TabExperiencias experiencias={experiencias} />
         )}
       </section>
     </main>
