@@ -1,4 +1,6 @@
-import { createContext, useContext, useReducer } from 'react'
+import { createContext, useContext, useReducer, useEffect } from 'react'
+
+const STORAGE_KEY = 'erb_sesion_jugador'
 
 const GameContext = createContext(null)
 
@@ -13,6 +15,14 @@ const initialState = {
   grupoModo: null,
   faseAsignadaId: null,
   epocaConjunta: false,
+}
+
+function cargarDesdeStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) return { ...initialState, ...JSON.parse(raw) }
+  } catch {}
+  return initialState
 }
 
 function gameReducer(state, action) {
@@ -31,12 +41,24 @@ function gameReducer(state, action) {
 }
 
 export function GameProvider({ children }) {
-  const [game, dispatch] = useReducer(gameReducer, initialState)
+  const [game, dispatch] = useReducer(gameReducer, undefined, cargarDesdeStorage)
+
+  // Persistir en localStorage cada vez que cambia el estado (sin progreso, que se recarga de Firestore)
+  useEffect(() => {
+    if (!game.grupoId) return
+    try {
+      const { progreso, ...toSave } = game
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
+    } catch {}
+  }, [game])
 
   const setSesion = (datos) => dispatch({ type: 'SET_SESION', payload: datos })
   const setProgreso = (progreso) => dispatch({ type: 'SET_PROGRESO', payload: progreso })
   const avanzarEpoca = (epocaId) => dispatch({ type: 'AVANZAR_EPOCA', payload: epocaId })
-  const resetGame = () => dispatch({ type: 'RESET' })
+  const resetGame = () => {
+    try { localStorage.removeItem(STORAGE_KEY) } catch {}
+    dispatch({ type: 'RESET' })
+  }
 
   return (
     <GameContext.Provider value={{ game, setSesion, setProgreso, avanzarEpoca, resetGame }}>
