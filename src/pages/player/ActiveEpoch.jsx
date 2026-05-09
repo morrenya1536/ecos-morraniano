@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
 import {
   MultiFormatReader,
@@ -11,20 +11,39 @@ import { useGame } from '../../context/GameContext'
 import {
   subscribeProgresoEpoca,
   registrarAyuda,
+  pausarEpoca,
+  reanudarEpoca,
 } from '../../services/firestore'
 import { getDocs, collection } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function useElapsed(tsMillis) {
+function useElapsedActivo(progreso) {
   const [elapsed, setElapsed] = useState(0)
+  const tiempoAcumuladoMs = progreso?.tiempoAcumuladoMs ?? null
+  const inicioActualMs = progreso?.inicioActual?.toMillis?.() ?? null
+  const estado = progreso?.estado ?? null
+  const tiempoInicioMs = progreso?.tiempoInicio?.toMillis?.() ?? null
+
   useEffect(() => {
-    if (!tsMillis) return
-    const tick = () => setElapsed(Math.floor((Date.now() - tsMillis) / 1000))
+    if (tiempoAcumuladoMs !== null) {
+      if (!inicioActualMs || estado !== 'activo') {
+        setElapsed(Math.floor(tiempoAcumuladoMs / 1000))
+        return
+      }
+      const tick = () => setElapsed(Math.floor((tiempoAcumuladoMs + Date.now() - inicioActualMs) / 1000))
+      tick()
+      const id = setInterval(tick, 1000)
+      return () => clearInterval(id)
+    }
+    // Legacy schema fallback
+    if (!tiempoInicioMs) return
+    const tick = () => setElapsed(Math.floor((Date.now() - tiempoInicioMs) / 1000))
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
-  }, [tsMillis])
+  }, [tiempoAcumuladoMs, inicioActualMs, estado, tiempoInicioMs])
+
   return elapsed
 }
 
@@ -54,17 +73,23 @@ function RecenterMap({ lat, lng }) {
   return null
 }
 
-// ─── Epoch header timer bar ───────────────────────────────────────────────────
-function EpochTimerBar({ tiempoInicioMillis, penalizacionMinutos = 0 }) {
-  const elapsed = useElapsed(tiempoInicioMillis)
-  const total = elapsed + (penalizacionMinutos * 60)
+// ─── Pause bar ─────────────────────────────────────────────────────────────────
+function PauseBar({ estado, onPausar, onReanudar, loading }) {
+  if (!estado || estado === 'completado') return null
   return (
-    <div className="epoch-timer-bar">
-      <span className="epoch-timer-bar__elapsed">{formatTime(elapsed)}</span>
-      {penalizacionMinutos > 0 && (
-        <span className="epoch-timer-bar__penalty">+{penalizacionMinutos} min</span>
+    <div className={`pause-bar${estado === 'pausado' ? ' pause-bar--pausado' : ''}`}>
+      {estado === 'pausado' ? (
+        <>
+          <span className="pause-bar__label">⏸ Época pausada</span>
+          <button className="btn btn--ghost btn--small" onClick={onReanudar} disabled={loading}>
+            {loading ? '...' : '▶ Reanudar'}
+          </button>
+        </>
+      ) : (
+        <button className="btn btn--ghost btn--small pause-bar__btn" onClick={onPausar} disabled={loading}>
+          {loading ? '...' : '⏸ Pausar'}
+        </button>
       )}
-      <span className="epoch-timer-bar__total">{formatTime(total)} total</span>
     </div>
   )
 }
@@ -72,28 +97,26 @@ function EpochTimerBar({ tiempoInicioMillis, penalizacionMinutos = 0 }) {
 const TIENE_BARCODE_DETECTOR = typeof BarcodeDetector !== 'undefined'
 
 // ─── Tab QR ───────────────────────────────────────────────────────────────────
-function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinutos, onPuntoConfirmado }) {
+function TabQR({ puntos, puntosCompletados, progreso, onPuntoConfirmado }) {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
-  const loopRef = useRef(null)   // ID del setTimeout del bucle de escaneo
-  const streamRef = useRef(null) // MediaStream activo
+  const loopRef = useRef(null)
+  const streamRef = useRef(null)
   const mountedRef = useRef(true)
   const procesandoRef = useRef(false)
-
-  // Refs para que los callbacks de escaneo lean siempre los datos más recientes.
   const puntosRef = useRef(puntos)
   const completadosRef = useRef(puntosCompletados)
   useEffect(() => { puntosRef.current = puntos }, [puntos])
   useEffect(() => { completadosRef.current = puntosCompletados }, [puntosCompletados])
 
-  const [estado, setEstado] = useState('idle') // 'idle' | 'iniciando' | 'activo' | 'error'
+  const [estado, setEstado] = useState('idle')
   const [errorCamara, setErrorCamara] = useState('')
-  const [mensajeScan, setMensajeScan] = useState(null) // { texto, tipo: 'error' }
+  const [mensajeScan, setMensajeScan] = useState(null)
 
   const pendingPunto = puntos.find(p => !puntosCompletados.includes(p.id))
-  const elapsed = useElapsed(tiempoInicioMillis)
+  const elapsed = useElapsedActivo(progreso)
+  const penalizacionMinutos = progreso?.penalizacionMinutos ?? 0
 
-  // Libera la cámara al desmontar (cambio de tab o navegación).
   useEffect(() => {
     mountedRef.current = true
     return () => {
@@ -114,43 +137,35 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
     setMensajeScan(null)
   }
 
-  // Lógica de validación compartida por ambos modos de escaneo.
   const procesarEscaneo = (rawValue) => {
     if (procesandoRef.current) return
     procesandoRef.current = true
-
     const scannedId = rawValue.trim()
     const todosPuntos = puntosRef.current
     const completados = completadosRef.current
-
     if (!todosPuntos.some(p => p.id === scannedId)) {
       setMensajeScan({ texto: 'QR no reconocido. Este código no pertenece a esta época.', tipo: 'error' })
       setTimeout(() => { setMensajeScan(null); procesandoRef.current = false }, 3000)
       return
     }
-
     const puntoActual = todosPuntos.find(p => !completados.includes(p.id))
     if (!puntoActual || scannedId !== puntoActual.id) {
       setMensajeScan({ texto: 'Este no es el punto que buscas. Sigue explorando.', tipo: 'error' })
       setTimeout(() => { setMensajeScan(null); procesandoRef.current = false }, 3000)
       return
     }
-
-    // Correcto — la navegación desmontará el componente y liberará la cámara.
     onPuntoConfirmado(scannedId)
   }
 
   const iniciarBucleBarcode = (video) => {
     let detector
-    try { detector = new BarcodeDetector({ formats: ['qr_code'] }) }
-    catch { return false }
-
+    try { detector = new BarcodeDetector({ formats: ['qr_code'] }) } catch { return false }
     const tick = async () => {
       if (!streamRef.current) return
       try {
         const barcodes = await detector.detect(video)
         if (barcodes.length > 0) procesarEscaneo(barcodes[0].rawValue)
-      } catch { /* NotFoundException por frame, normal */ }
+      } catch { }
       loopRef.current = setTimeout(tick, 300)
     }
     tick()
@@ -160,19 +175,16 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
   const iniciarBucleZxing = (video) => {
     const reader = new MultiFormatReader()
     const canvas = canvasRef.current
-
     const tick = () => {
       if (!streamRef.current) return
-      const w = video.videoWidth
-      const h = video.videoHeight
+      const w = video.videoWidth, h = video.videoHeight
       if (w && h) {
         if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h }
         canvas.getContext('2d').drawImage(video, 0, 0, w, h)
         try {
           const source = new HTMLCanvasElementLuminanceSource(canvas)
-          const result = reader.decode(new BinaryBitmap(new HybridBinarizer(source)))
-          procesarEscaneo(result.getText())
-        } catch { /* NotFoundException por frame, normal */ }
+          procesarEscaneo(reader.decode(new BinaryBitmap(new HybridBinarizer(source))).getText())
+        } catch { }
       }
       loopRef.current = setTimeout(tick, 300)
     }
@@ -185,23 +197,14 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
     setErrorCamara('')
     setMensajeScan(null)
     procesandoRef.current = false
-
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      })
-
-      if (!mountedRef.current) {
-        stream.getTracks().forEach(t => t.stop())
-        return
-      }
-
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      if (!mountedRef.current) { stream.getTracks().forEach(t => t.stop()); return }
       streamRef.current = stream
       const video = videoRef.current
       video.srcObject = stream
       await video.play()
       setEstado('activo')
-
       if (TIENE_BARCODE_DETECTOR && iniciarBucleBarcode(video)) return
       iniciarBucleZxing(video)
     } catch (err) {
@@ -228,26 +231,21 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
       <p className="tab-qr__hint">
         Busca el QR en la localización y escanéalo para desbloquear los puzzles.
       </p>
-
       <video
         ref={videoRef}
         className={`qr-reader-box${estado === 'activo' ? ' qr-reader-box--activo' : ''}`}
         playsInline
         muted
       />
-      {/* Canvas oculto para el fallback @zxing cuando BarcodeDetector no está disponible */}
       <canvas ref={canvasRef} style={{ display: 'none' }} />
-
       {estado === 'activo' && (
         <p className="qr-scan-label">
           <span className="qr-scan-dot" /> Cámara activa — apunta al código QR
         </p>
       )}
-
       {mensajeScan && (
         <p className={`qr-scan-msg qr-scan-msg--${mensajeScan.tipo}`}>{mensajeScan.texto}</p>
       )}
-
       {estado === 'error' && (
         <div className="qr-error-box">
           <p>{errorCamara}</p>
@@ -259,14 +257,9 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
           )}
         </div>
       )}
-
       <div className="tab-qr__actions">
         {estado === 'activo'
-          ? (
-            <button type="button" onClick={detener} className="btn btn--ghost">
-              Detener cámara
-            </button>
-          )
+          ? <button type="button" onClick={detener} className="btn btn--ghost">Detener cámara</button>
           : (
             <button
               type="button"
@@ -278,47 +271,99 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
             </button>
           )
         }
+        <button
+          type="button"
+          className="btn btn--ghost btn--small"
+          onClick={() => onPuntoConfirmado(pendingPunto.id)}
+        >
+          Continuar puzzle sin escanear
+        </button>
       </div>
     </div>
   )
 }
 
 // ─── Tab Pistas ───────────────────────────────────────────────────────────────
-function TabPistas({ puntos, puntosCompletados }) {
-  const completados = puntos.filter(p => puntosCompletados.includes(p.id))
+function TabPistas({ puntos, puntosCompletados, puzzlesCompletados, experienciaId, epocaId, onPuntoConfirmado }) {
+  const [puntoPuzzles, setPuntoPuzzles] = useState({})
+  const loadedRef = useRef(new Set())
+  const completadosSet = new Set(puzzlesCompletados)
   const pendingPunto = puntos.find(p => !puntosCompletados.includes(p.id))
+
+  useEffect(() => {
+    if (!experienciaId || !epocaId) return
+    puntos.forEach(p => {
+      if (!puntosCompletados.includes(p.id) && p.id !== pendingPunto?.id) return
+      if (loadedRef.current.has(p.id)) return
+      loadedRef.current.add(p.id)
+      getDocs(collection(db, 'experiencias', experienciaId, 'epocas', epocaId, 'puntos', p.id, 'puzzles'))
+        .then(snap => setPuntoPuzzles(prev => ({
+          ...prev,
+          [p.id]: snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)),
+        })))
+    })
+  }, [puntos, puntosCompletados, pendingPunto?.id, experienciaId, epocaId])
+
+  const displayPuntos = puntos.filter(p => puntosCompletados.includes(p.id) || p.id === pendingPunto?.id)
 
   return (
     <div className="tab-content tab-pistas">
-      {pendingPunto && (
-        <div className="pista-card pista-card--activa">
-          <p className="pista-card__label">Pista actual</p>
-          {pendingPunto.pistaEntrada?.imagenUrl && (
-            <img src={pendingPunto.pistaEntrada.imagenUrl} alt="Pista" className="media-image" />
-          )}
-          {pendingPunto.pistaEntrada?.videoUrl && (
-            <video src={pendingPunto.pistaEntrada.videoUrl} controls playsInline className="media-player" />
-          )}
-          <p className="pista-card__texto">
-            {pendingPunto.pistaEntrada?.texto || '(Sin texto de pista)'}
-          </p>
-        </div>
+      {displayPuntos.length === 0 && (
+        <p className="text-muted text-center">Cargando pistas...</p>
       )}
-      {completados.length > 0 && (
-        <>
-          <p className="tab-section-title">Pistas anteriores</p>
-          {completados.map(p => (
-            <div key={p.id} className="pista-card pista-card--completada">
-              <p className="pista-card__texto text-muted">
-                {p.pistaEntrada?.texto || '—'}
-              </p>
-            </div>
-          ))}
-        </>
-      )}
-      {!pendingPunto && completados.length === 0 && (
-        <p className="text-muted text-center">Cargando puntos...</p>
-      )}
+      {displayPuntos.map(p => {
+        const isDone = puntosCompletados.includes(p.id)
+        const puzzles = puntoPuzzles[p.id] ?? []
+        const firstActiveIdx = !isDone ? puzzles.findIndex(pz => !completadosSet.has(pz.id)) : -1
+        const hasStarted = !isDone && puzzles.some(pz => completadosSet.has(pz.id))
+
+        return (
+          <div key={p.id} className={`pista-card ${isDone ? 'pista-card--completada' : 'pista-card--activa'}`}>
+            <span className={`pista-card__badge${isDone ? '' : ' pista-card__badge--activo'}`}>
+              {isDone ? '✓ Completado' : '▶ Activo'}
+            </span>
+            {p.pistaEntrada?.imagenUrl && (
+              <img src={p.pistaEntrada.imagenUrl} alt="Pista" className="media-image" />
+            )}
+            {p.pistaEntrada?.videoUrl && (
+              <video src={p.pistaEntrada.videoUrl} controls playsInline className="media-player" />
+            )}
+            {p.pistaEntrada?.texto && (
+              <p className="pista-card__texto">{p.pistaEntrada.texto}</p>
+            )}
+            {puzzles.length > 0 && (
+              <div className="pista-card__puzzles">
+                {puzzles.map((pz, idx) => {
+                  const pzDone = completadosSet.has(pz.id)
+                  if (!isDone && !pzDone && idx !== firstActiveIdx) return null
+                  return (
+                    <div
+                      key={pz.id}
+                      className={`pista-puzzle ${pzDone || isDone ? 'pista-puzzle--completado' : 'pista-puzzle--activo'}`}
+                    >
+                      <span className="pista-puzzle__enunciado">{pz.enunciado}</span>
+                      {(pzDone || isDone) && pz.respuestaCorrecta && (
+                        <span className="pista-puzzle__respuesta">→ {pz.respuestaCorrecta}</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {!isDone && (
+              <button
+                className="btn btn--primary btn--small"
+                style={{ marginTop: 'var(--gap)' }}
+                onClick={() => onPuntoConfirmado(p.id)}
+              >
+                {hasStarted ? 'Continuar puzzle' : 'Ir al puzzle'}
+              </button>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -375,7 +420,6 @@ function TabAyuda({ puntos, puntosCompletados, puzzlesCompletados, progreso, epo
   const [mostradas, setMostradas] = useState({})
   const [confirmar, setConfirmar] = useState(null)
 
-  // Reload puzzles when the pending punto changes
   useEffect(() => {
     if (!pendingPunto || !experienciaId) return
     setPuzzles([])
@@ -450,13 +494,9 @@ function TabAyuda({ puntos, puntosCompletados, puzzlesCompletados, progreso, epo
           Todos los puzzles de este punto están resueltos.
         </p>
       )}
-
       {!puzzleActual && puzzles.length === 0 && (
-        <p className="text-muted text-center" style={{ marginTop: '2rem' }}>
-          Cargando...
-        </p>
+        <p className="text-muted text-center" style={{ marginTop: '2rem' }}>Cargando...</p>
       )}
-
       {puzzleActual && !tieneAyudas && (
         <p className="text-muted text-center" style={{ marginTop: '2rem' }}>
           No hay ayudas disponibles para esta prueba.
@@ -506,15 +546,16 @@ function TabAyuda({ puntos, puntosCompletados, puzzlesCompletados, progreso, epo
 
 // ─── Tab Tiempo ───────────────────────────────────────────────────────────────
 function TabTiempo({ progreso }) {
-  const inicioMillis = progreso?.tiempoInicio?.toMillis?.() ?? null
-  const elapsed = useElapsed(inicioMillis)
+  const elapsed = useElapsedActivo(progreso)
   const penalizacion = progreso?.penalizacionMinutos ?? 0
+  const isPaused = progreso?.estado === 'pausado'
 
   return (
     <div className="tab-content tab-tiempo">
       <div className="tiempo-display">
-        <p className="tiempo-display__label">Tiempo en esta época</p>
+        <p className="tiempo-display__label">Tiempo activo en esta época</p>
         <p className="tiempo-display__value">{formatTime(elapsed)}</p>
+        {isPaused && <p className="tiempo-display__pausado">⏸ Época pausada</p>}
         {penalizacion > 0 && (
           <>
             <p className="tiempo-display__penalizacion">+ {penalizacion} min penalización</p>
@@ -542,20 +583,22 @@ function TabTiempo({ progreso }) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'pistas', label: 'Pistas',   icon: '↗' },
-  { id: 'mapa',   label: 'Mapa',     icon: '◈' },
-  { id: 'qr',     label: 'Escanear', icon: '▣' },
-  { id: 'tiempo', label: 'Tiempo',   icon: '⏱' },
-  { id: 'ayuda',  label: 'Ayuda',    icon: '?' },
+  { id: 'pistas',  label: 'Pistas',   icon: '↗' },
+  { id: 'mapa',    label: 'Mapa',     icon: '◈' },
+  { id: 'qr',      label: 'Escanear', icon: '▣' },
+  { id: 'tiempo',  label: 'Tiempo',   icon: '⏱' },
+  { id: 'ayuda',   label: 'Ayuda',    icon: '?' },
 ]
 
 export default function ActiveEpoch() {
   const { epocaId } = useParams()
   const { game } = useGame()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('pistas')
+  const location = useLocation()
+  const [activeTab, setActiveTab] = useState(location.state?.activeTab ?? 'pistas')
   const [puntos, setPuntos] = useState([])
   const [progreso, setProgreso] = useState(null)
+  const [pauseLoading, setPauseLoading] = useState(false)
 
   useEffect(() => {
     if (!game.experienciaId || !epocaId) return
@@ -577,7 +620,6 @@ export default function ActiveEpoch() {
     })
   }, [game.grupoId, game.equipoId, epocaId])
 
-  // Redirect to completion when all puntos done
   useEffect(() => {
     if (!progreso || puntos.length === 0) return
     const completados = progreso.puntosCompletados ?? []
@@ -590,24 +632,44 @@ export default function ActiveEpoch() {
     navigate(`/jugador/puzzle/${epocaId}/${puntoId}`)
   }
 
+  const handlePausar = async () => {
+    setPauseLoading(true)
+    try { await pausarEpoca(game.grupoId, game.equipoId, epocaId) } finally { setPauseLoading(false) }
+  }
+  const handleReanudar = async () => {
+    setPauseLoading(true)
+    try { await reanudarEpoca(game.grupoId, game.equipoId, epocaId) } finally { setPauseLoading(false) }
+  }
+
   const puntosCompletados = progreso?.puntosCompletados ?? []
   const puzzlesCompletados = progreso?.puzzlesCompletados ?? []
-  const inicioMillis = progreso?.tiempoInicio?.toMillis?.() ?? null
 
   return (
     <div className="active-epoch">
+      <PauseBar
+        estado={progreso?.estado}
+        onPausar={handlePausar}
+        onReanudar={handleReanudar}
+        loading={pauseLoading}
+      />
       <div className="active-epoch__content">
+        {activeTab === 'pistas' && (
+          <TabPistas
+            puntos={puntos}
+            puntosCompletados={puntosCompletados}
+            puzzlesCompletados={puzzlesCompletados}
+            experienciaId={game.experienciaId}
+            epocaId={epocaId}
+            onPuntoConfirmado={handlePuntoConfirmado}
+          />
+        )}
         {activeTab === 'qr' && (
           <TabQR
             puntos={puntos}
             puntosCompletados={puntosCompletados}
-            tiempoInicioMillis={inicioMillis}
-            penalizacionMinutos={progreso?.penalizacionMinutos ?? 0}
+            progreso={progreso}
             onPuntoConfirmado={handlePuntoConfirmado}
           />
-        )}
-        {activeTab === 'pistas' && (
-          <TabPistas puntos={puntos} puntosCompletados={puntosCompletados} />
         )}
         {activeTab === 'mapa' && (
           <TabMapa puntos={puntos} puntosCompletados={puntosCompletados} />

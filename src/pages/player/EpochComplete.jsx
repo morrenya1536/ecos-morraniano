@@ -62,14 +62,19 @@ export default function EpochComplete() {
       )
       if (epocaSnap.exists()) setEpoca({ id: epocaSnap.id, ...epocaSnap.data() })
 
-      const snap = await getProgresoEpoca(game.grupoId, game.equipoId, epocaId)
+      let snap = await getProgresoEpoca(game.grupoId, game.equipoId, epocaId)
       if (snap.exists()) {
-        const data = snap.data()
-        setProgreso(data)
+        let data = snap.data()
         if (data.estado !== 'completado') {
           await completarEpoca(game.grupoId, game.equipoId, epocaId)
+          snap = await getProgresoEpoca(game.grupoId, game.equipoId, epocaId)
+          if (snap.exists()) data = snap.data()
         }
-        if (data.tiempoInicio) {
+        setProgreso(data)
+        if ('tiempoAcumuladoMs' in data) {
+          const activo = Math.floor((data.tiempoAcumuladoMs ?? 0) / 1000)
+          setTiempoSegundos(activo + (data.penalizacionMinutos ?? 0) * 60)
+        } else if (data.tiempoInicio) {
           const finMs = data.tiempoFin?.toMillis?.() ?? Date.now()
           const bruto = Math.floor((finMs - data.tiempoInicio.toMillis()) / 1000)
           setTiempoSegundos(bruto + (data.penalizacionMinutos ?? 0) * 60)
@@ -192,15 +197,6 @@ export default function EpochComplete() {
           ))}
         </div>
       )}
-
-      {/* Instrucciones de la moneda */}
-      <div className="moneda-instrucciones">
-        <p className="moneda-instrucciones__titulo">Moneda de la época</p>
-        <p className="moneda-instrucciones__texto">
-          Entrega la moneda física que encontrasteis al coordinador para validar la época completada.
-          Sin la moneda no se registrará el tiempo.
-        </p>
-      </div>
 
       <div className="epoch-complete__footer">
         <button

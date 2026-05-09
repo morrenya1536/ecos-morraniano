@@ -14,6 +14,8 @@ import {
   serverTimestamp,
   arrayUnion,
   increment,
+  runTransaction,
+  Timestamp,
 } from 'firebase/firestore'
 import { db } from './firebase'
 
@@ -156,8 +158,9 @@ const progresoDoc = (grupoId, equipoId, epocaId) =>
 export const initProgresoEpoca = (grupoId, equipoId, epocaId, extra = {}) =>
   setDoc(progresoDoc(grupoId, equipoId, epocaId), {
     ...extra,
-    tiempoInicio: serverTimestamp(),
-    tiempoFin: null,
+    inicioActual: serverTimestamp(),
+    tiempoAcumuladoMs: 0,
+    intervalos: [],
     puntosCompletados: [],
     puzzlesCompletados: [],
     penalizacionMinutos: 0,
@@ -187,10 +190,44 @@ export const registrarAyuda = (grupoId, equipoId, epocaId, puzzleId, nivel, pena
   return updateDoc(progresoDoc(grupoId, equipoId, epocaId), updates)
 }
 
-export const completarEpoca = (grupoId, equipoId, epocaId) =>
+export const pausarEpoca = (grupoId, equipoId, epocaId) =>
+  runTransaction(db, async (tx) => {
+    const ref = progresoDoc(grupoId, equipoId, epocaId)
+    const snap = await tx.get(ref)
+    if (!snap.exists()) return
+    const data = snap.data()
+    if (data.estado !== 'activo' || !data.inicioActual) return
+    const inicio = data.inicioActual
+    const fin = Timestamp.now()
+    tx.update(ref, {
+      estado: 'pausado',
+      inicioActual: null,
+      tiempoAcumuladoMs: (data.tiempoAcumuladoMs ?? 0) + (fin.toMillis() - inicio.toMillis()),
+      intervalos: [...(data.intervalos ?? []), { inicio, fin }],
+    })
+  })
+
+export const reanudarEpoca = (grupoId, equipoId, epocaId) =>
   updateDoc(progresoDoc(grupoId, equipoId, epocaId), {
-    estado: 'completado',
-    tiempoFin: serverTimestamp(),
+    estado: 'activo',
+    inicioActual: serverTimestamp(),
+  })
+
+export const completarEpoca = (grupoId, equipoId, epocaId) =>
+  runTransaction(db, async (tx) => {
+    const ref = progresoDoc(grupoId, equipoId, epocaId)
+    const snap = await tx.get(ref)
+    if (!snap.exists()) return
+    const data = snap.data()
+    const updates = { estado: 'completado' }
+    if (data.inicioActual && data.estado === 'activo') {
+      const inicio = data.inicioActual
+      const fin = Timestamp.now()
+      updates.inicioActual = null
+      updates.tiempoAcumuladoMs = (data.tiempoAcumuladoMs ?? 0) + (fin.toMillis() - inicio.toMillis())
+      updates.intervalos = [...(data.intervalos ?? []), { inicio, fin }]
+    }
+    tx.update(ref, updates)
   })
 
 // Legacy — kept for coordinator progress view

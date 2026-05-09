@@ -1450,3 +1450,83 @@ select option { background: var(--color-surface); }
 .epoch-complete__footer {
   padding-top: var(--gap);
 }
+
+/* ─── Pause bar ──────────────────────────────────────────────────────────── */
+.pause-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 5px 12px;
+  gap: 10px;
+  min-height: 36px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--color-surface-2);
+}
+
+.pause-bar--pausado {
+  background: rgba(255, 183, 77, 0.08);
+  border-bottom-color: rgba(255, 183, 77, 0.3);
+}
+
+.pause-bar__label {
+  font-size: 0.75rem;
+  color: var(--color-warning);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  flex: 1;
+}
+
+.pause-bar__btn { margin-left: auto; }
+
+/* ─── Pista card — puzzle history ────────────────────────────────────────── */
+.pista-card__badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--color-success);
+  margin-bottom: 0.5rem;
+}
+
+.pista-card__badge--activo {
+  background: rgba(108, 99, 255, 0.15);
+  color: var(--color-accent);
+}
+
+.pista-card__puzzles {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pista-puzzle {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+}
+
+.pista-puzzle--activo     { border-left: 2px solid var(--color-accent); }
+.pista-puzzle--completado { border-left: 2px solid var(--color-success); }
+
+.pista-puzzle__enunciado { display: block; color: var(--color-text-muted); }
+.pista-puzzle__respuesta {
+  display: block;
+  color: var(--color-success);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+/* ─── Tab Tiempo — paused label ──────────────────────────────────────────── */
+.tiempo-display__pausado {
+  font-size: 0.875rem;
+  color: var(--color-warning);
+  font-weight: 600;
+  margin-top: 4px;
+}
