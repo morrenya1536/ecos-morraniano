@@ -4,6 +4,7 @@ import {
   getDoc,
   getDocs,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -11,6 +12,8 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
+  arrayUnion,
+  increment,
 } from 'firebase/firestore'
 import { db } from './firebase'
 
@@ -146,20 +149,61 @@ export const deleteEquipo = (grupoId, equipoId) =>
 export const subscribeEquipos = (grupoId, callback) =>
   onSnapshot(collection(db, 'grupos', grupoId, 'equipos'), callback)
 
-// ─── Progreso (tiempo real) ────────────────────────────────────────────────
+// ─── Progreso de época ─────────────────────────────────────────────────────
+const progresoDoc = (grupoId, equipoId, epocaId) =>
+  doc(db, 'grupos', grupoId, 'equipos', equipoId, 'progreso', epocaId)
+
+export const initProgresoEpoca = (grupoId, equipoId, epocaId, extra = {}) =>
+  setDoc(progresoDoc(grupoId, equipoId, epocaId), {
+    ...extra,
+    tiempoInicio: serverTimestamp(),
+    tiempoFin: null,
+    puntosCompletados: [],
+    puzzlesCompletados: [],
+    penalizacionMinutos: 0,
+    ayudasUsadas: {},
+    estado: 'activo',
+  })
+
+export const getProgresoEpoca = (grupoId, equipoId, epocaId) =>
+  getDoc(progresoDoc(grupoId, equipoId, epocaId))
+
+export const subscribeProgresoEpoca = (grupoId, equipoId, epocaId, callback) =>
+  onSnapshot(progresoDoc(grupoId, equipoId, epocaId), callback)
+
+export const marcarPuntoCompletado = (grupoId, equipoId, epocaId, puntoId) =>
+  updateDoc(progresoDoc(grupoId, equipoId, epocaId), {
+    puntosCompletados: arrayUnion(puntoId),
+  })
+
+export const marcarPuzzleCompletado = (grupoId, equipoId, epocaId, puzzleId) =>
+  updateDoc(progresoDoc(grupoId, equipoId, epocaId), {
+    puzzlesCompletados: arrayUnion(puzzleId),
+  })
+
+export const registrarAyuda = (grupoId, equipoId, epocaId, puzzleId, nivel, penalizacion) => {
+  const updates = { [`ayudasUsadas.${puzzleId}`]: nivel }
+  if (penalizacion > 0) updates.penalizacionMinutos = increment(penalizacion)
+  return updateDoc(progresoDoc(grupoId, equipoId, epocaId), updates)
+}
+
+export const completarEpoca = (grupoId, equipoId, epocaId) =>
+  updateDoc(progresoDoc(grupoId, equipoId, epocaId), {
+    estado: 'completado',
+    tiempoFin: serverTimestamp(),
+  })
+
+// Legacy — kept for coordinator progress view
 export const subscribeProgreso = (grupoId, equipoId, callback) =>
   onSnapshot(
     collection(db, 'grupos', grupoId, 'equipos', equipoId, 'progreso'),
     callback
   )
 
-export const updateProgreso = (grupoId, equipoId, progresoId, data) =>
-  updateDoc(
-    doc(db, 'grupos', grupoId, 'equipos', equipoId, 'progreso', progresoId),
-    data
-  )
-
 // ─── Ranking ───────────────────────────────────────────────────────────────
+export const writeRanking = (data) =>
+  addDoc(collection(db, 'rankings'), { ...data, fecha: serverTimestamp() })
+
 export const getRanking = (experienciaId) =>
   getDocs(query(
     collection(db, 'rankings'),

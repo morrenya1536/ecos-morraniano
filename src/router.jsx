@@ -7,7 +7,10 @@ import ExperienceBuilder from './pages/coordinator/ExperienceBuilder'
 import GruposManager from './pages/coordinator/GruposManager'
 import PlayerAccess from './pages/player/PlayerAccess'
 import PlayerHome from './pages/player/PlayerHome'
+import BriefingScreen from './pages/player/BriefingScreen'
 import ActiveEpoch from './pages/player/ActiveEpoch'
+import PuzzleScreen from './pages/player/PuzzleScreen'
+import EpochComplete from './pages/player/EpochComplete'
 import Ranking from './pages/Ranking'
 import NotFound from './pages/NotFound'
 
@@ -36,8 +39,20 @@ export const router = createBrowserRouter([
     element: <RutaJugador><PlayerHome /></RutaJugador>,
   },
   {
+    path: '/jugador/briefing/:epocaId',
+    element: <RutaJugador><BriefingScreen /></RutaJugador>,
+  },
+  {
     path: '/jugador/epoca/:epocaId',
     element: <RutaJugador><ActiveEpoch /></RutaJugador>,
+  },
+  {
+    path: '/jugador/puzzle/:epocaId/:puntoId',
+    element: <RutaJugador><PuzzleScreen /></RutaJugador>,
+  },
+  {
+    path: '/jugador/epoca/:epocaId/completada',
+    element: <RutaJugador><EpochComplete /></RutaJugador>,
   },
 
   // ── Público ────────────────────────────────────────────────────────────
