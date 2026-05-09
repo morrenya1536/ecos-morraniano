@@ -110,7 +110,7 @@ function FormPunto({ initial, onGuardar, onCancelar }) {
         <p className="builder-form__section-title">Pista de entrada</p>
         <p className="form__hint">
           Esta pista se muestra al jugador cuando se desbloquea este punto.
-          Para el primer punto de la época, es la pista inicial que reciben en el briefing.
+          Para el primer punto de la fase, es la pista inicial que reciben en el briefing.
         </p>
         <div className="form__group">
           <label className="form__label">Texto de la pista</label>
@@ -411,7 +411,7 @@ export default function PointBuilder({ experienciaId, epocaId }) {
 
       {puntos.length === 0 && !creando && (
         <div className="empty-state">
-          <p>No hay puntos en esta época.</p>
+          <p>No hay puntos en esta fase.</p>
         </div>
       )}
 
@@ -436,7 +436,7 @@ export default function PointBuilder({ experienciaId, epocaId }) {
                 </span>
                 <span className="builder-orden">{idx + 1}</span>
                 {idx === 0 && (
-                  <span className="badge badge--inicio" title="Su pista de entrada es la pista inicial de la época">
+                  <span className="badge badge--inicio" title="Su pista de entrada es la pista inicial de la fase">
                     Inicio
                   </span>
                 )}

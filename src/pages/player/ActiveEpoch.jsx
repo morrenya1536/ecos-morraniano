@@ -80,7 +80,7 @@ function PauseBar({ estado, onPausar, onReanudar, loading }) {
     <div className={`pause-bar${estado === 'pausado' ? ' pause-bar--pausado' : ''}`}>
       {estado === 'pausado' ? (
         <>
-          <span className="pause-bar__label">⏸ Época pausada</span>
+          <span className="pause-bar__label">⏸ Fase pausada</span>
           <button className="btn btn--ghost btn--small" onClick={onReanudar} disabled={loading}>
             {loading ? '...' : '▶ Reanudar'}
           </button>
@@ -553,9 +553,9 @@ function TabTiempo({ progreso }) {
   return (
     <div className="tab-content tab-tiempo">
       <div className="tiempo-display">
-        <p className="tiempo-display__label">Tiempo activo en esta época</p>
+        <p className="tiempo-display__label">Tiempo activo en esta fase</p>
         <p className="tiempo-display__value">{formatTime(elapsed)}</p>
-        {isPaused && <p className="tiempo-display__pausado">⏸ Época pausada</p>}
+        {isPaused && <p className="tiempo-display__pausado">⏸ Fase pausada</p>}
         {penalizacion > 0 && (
           <>
             <p className="tiempo-display__penalizacion">+ {penalizacion} min penalización</p>
@@ -600,6 +600,10 @@ export default function ActiveEpoch() {
   const [progreso, setProgreso] = useState(null)
   const [pauseLoading, setPauseLoading] = useState(false)
 
+  const equipoIdProgreso = game.grupoModo === 'colaborativo' && game.epocaConjunta
+    ? 'conjunto'
+    : game.equipoId
+
   useEffect(() => {
     if (!game.experienciaId || !epocaId) return
     getDocs(
@@ -614,11 +618,11 @@ export default function ActiveEpoch() {
   }, [game.experienciaId, epocaId])
 
   useEffect(() => {
-    if (!game.grupoId || !game.equipoId || !epocaId) return
-    return subscribeProgresoEpoca(game.grupoId, game.equipoId, epocaId, snap => {
+    if (!game.grupoId || !equipoIdProgreso || !epocaId) return
+    return subscribeProgresoEpoca(game.grupoId, equipoIdProgreso, epocaId, snap => {
       if (snap.exists()) setProgreso(snap.data())
     })
-  }, [game.grupoId, game.equipoId, epocaId])
+  }, [game.grupoId, equipoIdProgreso, epocaId])
 
   useEffect(() => {
     if (!progreso || puntos.length === 0) return
@@ -634,11 +638,11 @@ export default function ActiveEpoch() {
 
   const handlePausar = async () => {
     setPauseLoading(true)
-    try { await pausarEpoca(game.grupoId, game.equipoId, epocaId) } finally { setPauseLoading(false) }
+    try { await pausarEpoca(game.grupoId, equipoIdProgreso, epocaId) } finally { setPauseLoading(false) }
   }
   const handleReanudar = async () => {
     setPauseLoading(true)
-    try { await reanudarEpoca(game.grupoId, game.equipoId, epocaId) } finally { setPauseLoading(false) }
+    try { await reanudarEpoca(game.grupoId, equipoIdProgreso, epocaId) } finally { setPauseLoading(false) }
   }
 
   const puntosCompletados = progreso?.puntosCompletados ?? []
@@ -683,7 +687,7 @@ export default function ActiveEpoch() {
             epocaId={epocaId}
             experienciaId={game.experienciaId}
             grupoId={game.grupoId}
-            equipoId={game.equipoId}
+            equipoId={equipoIdProgreso}
           />
         )}
         {activeTab === 'tiempo' && (

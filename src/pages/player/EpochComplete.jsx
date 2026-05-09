@@ -6,6 +6,8 @@ import {
   getProgresoEpoca,
   subscribeEquipos,
   subscribeProgresoEpoca,
+  writeRanking,
+  subscribeRanking,
 } from '../../services/firestore'
 import { getDocs, getDoc, doc, collection } from 'firebase/firestore'
 import { db } from '../../services/firebase'
@@ -52,7 +54,14 @@ export default function EpochComplete() {
   const [tiempoSegundos, setTiempoSegundos] = useState(null)
   const [listo, setListo] = useState(false)
 
-  // Load epoch data + mark completed
+  // Collaborative waiting state
+  const [otrosProgreso, setOtrosProgreso] = useState({})
+  const [rankingData, setRankingData] = useState([])
+
+  const equipoIdProgreso = game.grupoModo === 'colaborativo' && game.epocaConjunta
+    ? 'conjunto'
+    : game.equipoId
+
   useEffect(() => {
     if (!game.grupoId || !game.equipoId || !game.experienciaId || !epocaId) return
 
@@ -62,12 +71,12 @@ export default function EpochComplete() {
       )
       if (epocaSnap.exists()) setEpoca({ id: epocaSnap.id, ...epocaSnap.data() })
 
-      let snap = await getProgresoEpoca(game.grupoId, game.equipoId, epocaId)
+      let snap = await getProgresoEpoca(game.grupoId, equipoIdProgreso, epocaId)
       if (snap.exists()) {
         let data = snap.data()
         if (data.estado !== 'completado') {
-          await completarEpoca(game.grupoId, game.equipoId, epocaId)
-          snap = await getProgresoEpoca(game.grupoId, game.equipoId, epocaId)
+          await completarEpoca(game.grupoId, equipoIdProgreso, epocaId)
+          snap = await getProgresoEpoca(game.grupoId, equipoIdProgreso, epocaId)
           if (snap.exists()) data = snap.data()
         }
         setProgreso(data)
@@ -83,7 +92,7 @@ export default function EpochComplete() {
       setListo(true)
     }
     init()
-  }, [game.grupoId, game.equipoId, game.experienciaId, epocaId])
+  }, [game.grupoId, game.equipoId, game.experienciaId, epocaId, equipoIdProgreso])
 
   // Load epochs for next navigation
   useEffect(() => {
@@ -109,9 +118,57 @@ export default function EpochComplete() {
     })
   }, [game.grupoId, game.equipoId])
 
+  // Subscribe to other teams' progreso for this epoch (collaborative waiting)
+  useEffect(() => {
+    if (game.grupoModo !== 'colaborativo' || !game.grupoId || otrosEquipos.length === 0) return
+    const unsubs = otrosEquipos.map(eq => {
+      const faseId = eq.epocaAsignadaId
+      if (!faseId) return () => {}
+      return subscribeProgresoEpoca(game.grupoId, eq.id, faseId, snap => {
+        setOtrosProgreso(prev => ({
+          ...prev,
+          [eq.id]: snap.exists() ? snap.data() : null,
+        }))
+      })
+    })
+    return () => unsubs.forEach(u => u())
+  }, [game.grupoModo, game.grupoId, otrosEquipos])
+
+  // Write ranking for competitive final epoch
   const currentIdx = epocas.findIndex(e => e.id === epocaId)
-  const nextEpoca = epocas[currentIdx + 1] ?? null
   const isLast = listo && currentIdx === epocas.length - 1 && epocas.length > 0
+  const nextEpoca = epocas[currentIdx + 1] ?? null
+  const isCompetitivo = game.grupoModo === 'competitivo' || !game.grupoModo
+
+  useEffect(() => {
+    if (!isLast || !isCompetitivo || !listo || tiempoSegundos === null) return
+    if (!game.grupoId || !game.equipoId || !game.experienciaId) return
+    writeRanking({
+      grupoId: game.grupoId,
+      equipoId: game.equipoId,
+      equipoNombre: game.equipoNombre,
+      experienciaId: game.experienciaId,
+      tiempo: tiempoSegundos,
+      puntuacion: progreso?.puntosCompletados?.length ?? 0,
+    }).catch(() => {})
+  }, [isLast, isCompetitivo, listo, tiempoSegundos])
+
+  // Subscribe to ranking when competitive + last epoch
+  useEffect(() => {
+    if (!isLast || !isCompetitivo || !game.experienciaId) return
+    return subscribeRanking(game.experienciaId, snap => {
+      setRankingData(
+        snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.tiempo ?? Infinity) - (b.tiempo ?? Infinity))
+      )
+    })
+  }, [isLast, isCompetitivo, game.experienciaId])
+
+  // Collaborative: are all other teams done with their individual phases?
+  const todasFasesCompletadas = game.grupoModo === 'colaborativo' &&
+    otrosEquipos.length > 0 &&
+    otrosEquipos.every(eq => otrosProgreso[eq.id]?.estado === 'completado')
 
   const handleContinuar = () => {
     if (nextEpoca) {
@@ -123,9 +180,16 @@ export default function EpochComplete() {
 
   const desenlace = epoca?.desenlace
 
+  // Collaborative non-joint: show waiting screen if other teams aren't done
+  const mostrarEsperaColaborativa = game.grupoModo === 'colaborativo' &&
+    !game.epocaConjunta &&
+    !todasFasesCompletadas &&
+    listo
+
+  const myPosition = rankingData.findIndex(r => r.equipoId === game.equipoId) + 1
+
   return (
     <div className="page page--dark epoch-complete">
-      {/* Desenlace: vídeo */}
       {desenlace?.videoUrl && (
         <div className="epoch-complete__desenlace">
           <video
@@ -138,30 +202,26 @@ export default function EpochComplete() {
         </div>
       )}
 
-      {/* Desenlace: imagen (solo si no hay vídeo) */}
       {!desenlace?.videoUrl && desenlace?.imagenUrl && (
         <div className="epoch-complete__desenlace-imagen">
-          <img src={desenlace.imagenUrl} alt="Desenlace de la época" className="media-imagen" />
+          <img src={desenlace.imagenUrl} alt="Desenlace de la fase" className="media-imagen" />
         </div>
       )}
 
-      {/* Desenlace: texto */}
       {desenlace?.texto && (
         <div className="epoch-complete__desenlace-texto">
           <p>{desenlace.texto}</p>
         </div>
       )}
 
-      {/* Resumen de tiempo */}
       <div className="epoch-complete__hero">
         <div className="epoch-complete__check">✓</div>
-        <h1 className="epoch-complete__titulo">¡Época completada!</h1>
+        <h1 className="epoch-complete__titulo">¡Fase completada!</h1>
         {tiempoSegundos !== null && (
           <p className="epoch-complete__tiempo">{formatTime(tiempoSegundos)}</p>
         )}
       </div>
 
-      {/* Resumen de ayudas y puntos */}
       <div className="epoch-complete__stats">
         <div className="stat-item">
           <span className="stat-item__value">{progreso?.puntosCompletados?.length ?? 0}</span>
@@ -183,8 +243,45 @@ export default function EpochComplete() {
         )}
       </div>
 
-      {/* Estado del otro equipo */}
-      {otrosEquipos.length > 0 && (
+      {/* Competitive: ranking position + leaderboard */}
+      {isLast && isCompetitivo && rankingData.length > 0 && (
+        <div className="epoch-complete__ranking">
+          {myPosition > 0 && (
+            <p className="epoch-complete__ranking-pos">
+              Tu posición: <strong>#{myPosition}</strong>
+            </p>
+          )}
+          <p className="tab-section-title">Clasificación</p>
+          {rankingData.map((r, i) => (
+            <div
+              key={r.id}
+              className={`ranking-item ${r.equipoId === game.equipoId ? 'ranking-item--yo' : ''}`}
+            >
+              <span className="ranking-item__pos">#{i + 1}</span>
+              <span className="ranking-item__nombre">{r.equipoNombre}</span>
+              <span className="ranking-item__tiempo">{formatTime(r.tiempo)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Collaborative: other teams status */}
+      {game.grupoModo === 'colaborativo' && otrosEquipos.length > 0 && (
+        <div className="epoch-complete__otros">
+          <p className="tab-section-title">Otros equipos</p>
+          {otrosEquipos.map(eq => (
+            <OtroEquipo
+              key={eq.id}
+              equipo={eq}
+              grupoId={game.grupoId}
+              epocaId={eq.epocaAsignadaId ?? epocaId}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Competitive: other teams in same epoch */}
+      {isCompetitivo && otrosEquipos.length > 0 && (
         <div className="epoch-complete__otros">
           <p className="tab-section-title">Otros equipos</p>
           {otrosEquipos.map(eq => (
@@ -198,19 +295,42 @@ export default function EpochComplete() {
         </div>
       )}
 
+      {mostrarEsperaColaborativa && (
+        <div className="waiting-inline" style={{ marginTop: '24px' }}>
+          <p className="waiting-inline__texto">
+            Esperando a los otros equipos para las fases conjuntas...
+          </p>
+          <div className="waiting-inline__equipos">
+            {otrosEquipos.map(eq => {
+              const done = otrosProgreso[eq.id]?.estado === 'completado'
+              return (
+                <div key={eq.id} className={`waiting-equipo ${done ? 'waiting-equipo--done' : ''}`}>
+                  <span className="waiting-equipo__nombre">{eq.nombre}</span>
+                  <span className={`estado-badge estado-badge--${done ? 'completada' : 'activa'}`}>
+                    {done ? '✓' : '...'}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="epoch-complete__footer">
         <button
           onClick={handleContinuar}
-          disabled={!listo}
+          disabled={!listo || (game.grupoModo === 'colaborativo' && !game.epocaConjunta && !todasFasesCompletadas && !!nextEpoca)}
           className="btn btn--primary btn--large"
         >
           {!listo
             ? 'Guardando...'
-            : isLast
-              ? 'Finalizar experiencia'
-              : nextEpoca
-                ? `Continuar: ${nextEpoca.nombre}`
-                : 'Volver al inicio'}
+            : game.grupoModo === 'colaborativo' && !game.epocaConjunta && !todasFasesCompletadas && !!nextEpoca
+              ? 'Esperando equipos...'
+              : isLast
+                ? 'Finalizar experiencia'
+                : nextEpoca
+                  ? `Continuar: ${nextEpoca.nombre}`
+                  : 'Volver al inicio'}
         </button>
       </div>
     </div>

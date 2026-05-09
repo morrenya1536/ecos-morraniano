@@ -74,11 +74,11 @@ function FormEpoca({ initial, onGuardar, onCancelar }) {
             rows={2}
             value={form.descripcion}
             onChange={e => s('descripcion', e.target.value)}
-            placeholder="Contexto narrativo de la época"
+            placeholder="Contexto narrativo de la fase"
           />
         </div>
         <div className="form__group form__group--row">
-          <label className="form__label">¿Época conjunta? <span className="text-muted">(todos los equipos juntos)</span></label>
+          <label className="form__label">¿Fase conjunta? <span className="text-muted">(todos los equipos juntos)</span></label>
           <label className="toggle">
             <input type="checkbox" checked={form.conjunta} onChange={e => s('conjunta', e.target.checked)} />
             <span className="toggle__slider" />
@@ -94,7 +94,7 @@ function FormEpoca({ initial, onGuardar, onCancelar }) {
             rows={3}
             value={form.briefingTexto}
             onChange={e => s('briefingTexto', e.target.value)}
-            placeholder="Narración introductoria que verán los jugadores al inicio de la época"
+            placeholder="Narración introductoria que verán los jugadores al inicio de la fase"
           />
         </div>
         <div className="form-grid-2">
@@ -131,7 +131,7 @@ function FormEpoca({ initial, onGuardar, onCancelar }) {
             rows={3}
             value={form.desenlace.texto}
             onChange={e => sDesenlace('texto', e.target.value)}
-            placeholder="Narración final que verán los jugadores al completar la época"
+            placeholder="Narración final que verán los jugadores al completar la fase"
           />
         </div>
         <div className="form-grid-2">
@@ -165,7 +165,7 @@ function FormEpoca({ initial, onGuardar, onCancelar }) {
           Cancelar
         </button>
         <button type="submit" disabled={guardando} className="btn btn--primary btn--small">
-          {guardando ? 'Guardando...' : 'Guardar época'}
+          {guardando ? 'Guardando...' : 'Guardar fase'}
         </button>
       </div>
     </form>
@@ -254,13 +254,13 @@ export default function EpochBuilder({ experienciaId }) {
   return (
     <div className="builder-section">
       <div className="section-header">
-        <h2>Épocas ({epocas.length})</h2>
+        <h2>Fases ({epocas.length})</h2>
         <button
           type="button"
           onClick={() => { setCreando(c => !c); setEditandoId(null) }}
           className="btn btn--small"
         >
-          {creando ? 'Cancelar' : '+ Época'}
+          {creando ? 'Cancelar' : '+ Fase'}
         </button>
       </div>
 
@@ -274,7 +274,7 @@ export default function EpochBuilder({ experienciaId }) {
 
       {epocas.length === 0 && !creando && (
         <div className="empty-state">
-          <p>No hay épocas todavía. Añade la primera.</p>
+          <p>No hay fases todavía. Añade la primera.</p>
         </div>
       )}
 
@@ -342,7 +342,7 @@ export default function EpochBuilder({ experienciaId }) {
                     type="button"
                     onClick={() => setConfirmar(epoca.id)}
                     className="btn btn--ghost btn--small btn--icon"
-                    title="Eliminar época"
+                    title="Eliminar fase"
                   >✕</button>
                 )}
               </div>

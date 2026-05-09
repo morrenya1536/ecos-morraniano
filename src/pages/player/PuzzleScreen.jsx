@@ -210,6 +210,9 @@ export default function PuzzleScreen() {
   const { epocaId, puntoId } = useParams()
   const { game } = useGame()
   const navigate = useNavigate()
+  const equipoIdProgreso = game.grupoModo === 'colaborativo' && game.epocaConjunta
+    ? 'conjunto'
+    : game.equipoId
   const [punto, setPunto] = useState(null)
   const [puzzles, setPuzzles] = useState([])
   const [puzzleIdx, setPuzzleIdx] = useState(0)
@@ -222,19 +225,19 @@ export default function PuzzleScreen() {
   const [pausando, setPausando] = useState(false)
 
   useEffect(() => {
-    if (!game.grupoId || !game.equipoId || !epocaId) return
-    return subscribeProgresoEpoca(game.grupoId, game.equipoId, epocaId, snap => {
+    if (!game.grupoId || !equipoIdProgreso || !epocaId) return
+    return subscribeProgresoEpoca(game.grupoId, equipoIdProgreso, epocaId, snap => {
       if (snap.exists()) setProgresoEstado(snap.data().estado ?? 'activo')
     })
-  }, [game.grupoId, game.equipoId, epocaId])
+  }, [game.grupoId, equipoIdProgreso, epocaId])
 
   useEffect(() => {
-    if (!game.experienciaId || !epocaId || !puntoId || !game.grupoId || !game.equipoId) return
+    if (!game.experienciaId || !epocaId || !puntoId || !game.grupoId || !equipoIdProgreso) return
     const load = async () => {
       const [puntoSnap, puzzlesSnap, progresoSnap] = await Promise.all([
         getDoc(doc(db, 'experiencias', game.experienciaId, 'epocas', epocaId, 'puntos', puntoId)),
         getDocs(collection(db, 'experiencias', game.experienciaId, 'epocas', epocaId, 'puntos', puntoId, 'puzzles')),
-        getProgresoEpoca(game.grupoId, game.equipoId, epocaId),
+        getProgresoEpoca(game.grupoId, equipoIdProgreso, epocaId),
       ])
 
       if (puntoSnap.exists()) setPunto({ id: puntoSnap.id, ...puntoSnap.data() })
@@ -258,18 +261,18 @@ export default function PuzzleScreen() {
       setCargando(false)
     }
     load()
-  }, [game.experienciaId, epocaId, puntoId, game.grupoId, game.equipoId])
+  }, [game.experienciaId, epocaId, puntoId, game.grupoId, equipoIdProgreso])
 
   const handlePuzzleCorrecto = async () => {
     setGuardando(true)
     const pz = puzzles[puzzleIdx]
-    await marcarPuzzleCompletado(game.grupoId, game.equipoId, epocaId, pz.id)
+    await marcarPuzzleCompletado(game.grupoId, equipoIdProgreso, epocaId, pz.id)
 
     if (puzzleIdx < puzzles.length - 1) {
       setPuzzleIdx(i => i + 1)
       setGuardando(false)
     } else {
-      await marcarPuntoCompletado(game.grupoId, game.equipoId, epocaId, puntoId)
+      await marcarPuntoCompletado(game.grupoId, equipoIdProgreso, epocaId, puntoId)
       const puntosSnap = await getDocs(
         collection(db, 'experiencias', game.experienciaId, 'epocas', epocaId, 'puntos')
       )
@@ -286,11 +289,11 @@ export default function PuzzleScreen() {
 
   const handlePausar = async () => {
     setPausando(true)
-    try { await pausarEpoca(game.grupoId, game.equipoId, epocaId) } finally { setPausando(false) }
+    try { await pausarEpoca(game.grupoId, equipoIdProgreso, epocaId) } finally { setPausando(false) }
   }
   const handleReanudar = async () => {
     setPausando(true)
-    try { await reanudarEpoca(game.grupoId, game.equipoId, epocaId) } finally { setPausando(false) }
+    try { await reanudarEpoca(game.grupoId, equipoIdProgreso, epocaId) } finally { setPausando(false) }
   }
 
   const navigateToTab = (tabId) => {
@@ -339,13 +342,13 @@ export default function PuzzleScreen() {
                 )}
               </div>
             ) : (
-              <p className="text-muted">Este es el último punto de la época.</p>
+              <p className="text-muted">Este es el último punto de la fase.</p>
             )}
             <button
               onClick={() => navigate(`/jugador/epoca/${epocaId}`)}
               className="btn btn--primary btn--large"
             >
-              {siguientePista ? 'Seguir buscando' : 'Ver resultado de la época'}
+              {siguientePista ? 'Seguir buscando' : 'Ver resultado de la fase'}
             </button>
           </div>
         </div>

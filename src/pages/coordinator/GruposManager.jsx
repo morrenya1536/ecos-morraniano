@@ -15,8 +15,7 @@ import {
 import { generarCodigo } from '../../utils/helpers'
 import LoadingScreen from '../../components/shared/LoadingScreen'
 
-// ─── Equipos de un grupo ───────────────────────────────────────────────────
-function ListaEquipos({ grupoId, epocas }) {
+function ListaEquipos({ grupoId, epocas, modoGrupo }) {
   const [equipos, setEquipos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [form, setForm] = useState({
@@ -50,6 +49,8 @@ function ListaEquipos({ grupoId, epocas }) {
 
   if (cargando) return <p className="text-muted text-small">Cargando equipos...</p>
 
+  const fasesIndividuales = epocas.filter(e => !e.conjunta)
+
   return (
     <div className="equipos-section">
       {equipos.length === 0 ? (
@@ -61,7 +62,7 @@ function ListaEquipos({ grupoId, epocas }) {
               <div className="equipo-item__info">
                 <span className="equipo-item__nombre">{eq.nombre}</span>
                 <code className="code-badge">{eq.codigo}</code>
-                {eq.epocaAsignadaId && (
+                {modoGrupo === 'colaborativo' && eq.epocaAsignadaId && (
                   <span className="text-muted text-small">
                     {epocas.find((ep) => ep.id === eq.epocaAsignadaId)?.nombre ?? '—'}
                   </span>
@@ -106,15 +107,17 @@ function ListaEquipos({ grupoId, epocas }) {
             onChange={(e) => setForm({ ...form, nombre: e.target.value })}
             required
           />
-          <select
-            value={form.epocaAsignadaId}
-            onChange={(e) => setForm({ ...form, epocaAsignadaId: e.target.value })}
-          >
-            <option value="">Época (opcional)</option>
-            {epocas.map((ep) => (
-              <option key={ep.id} value={ep.id}>{ep.nombre}</option>
-            ))}
-          </select>
+          {modoGrupo === 'colaborativo' && (
+            <select
+              value={form.epocaAsignadaId}
+              onChange={(e) => setForm({ ...form, epocaAsignadaId: e.target.value })}
+            >
+              <option value="">Fase asignada</option>
+              {fasesIndividuales.map((ep) => (
+                <option key={ep.id} value={ep.id}>{ep.nombre}</option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="form__row form__row--compact">
           <label className="text-small text-muted">Mín. jug.</label>
@@ -144,7 +147,6 @@ function ListaEquipos({ grupoId, epocas }) {
   )
 }
 
-// ─── Página principal ──────────────────────────────────────────────────────
 export default function GruposManager() {
   const { experienciaId } = useParams()
   const { coordinador } = useAuth()
@@ -154,7 +156,7 @@ export default function GruposManager() {
   const [grupos, setGrupos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [expandido, setExpandido] = useState(null)
-  const [formGrupo, setFormGrupo] = useState({ nombre: '' })
+  const [formGrupo, setFormGrupo] = useState({ nombre: '', modo: 'competitivo' })
   const [guardandoGrupo, setGuardandoGrupo] = useState(false)
   const [confirmarEliminar, setConfirmarEliminar] = useState(null)
 
@@ -184,12 +186,13 @@ export default function GruposManager() {
     try {
       const ref = await createGrupo({
         nombre: formGrupo.nombre.trim(),
+        modo: formGrupo.modo,
         codigo: generarCodigo(6),
         experienciaId,
         activo: true,
         creadoPor: coordinador.uid,
       })
-      setFormGrupo({ nombre: '' })
+      setFormGrupo({ nombre: '', modo: 'competitivo' })
       setExpandido(ref.id)
     } finally {
       setGuardandoGrupo(false)
@@ -224,24 +227,36 @@ export default function GruposManager() {
       </header>
 
       <section className="page__content">
-        {/* Crear nuevo grupo */}
         <div className="card card--form">
           <h2>Nuevo grupo</h2>
-          <form onSubmit={handleCrearGrupo} className="form__row">
-            <input
-              type="text"
-              placeholder="Nombre del grupo (ej: Salida 14 mayo)"
-              value={formGrupo.nombre}
-              onChange={(e) => setFormGrupo({ nombre: e.target.value })}
-              required
-            />
-            <button type="submit" disabled={guardandoGrupo} className="btn">
-              {guardandoGrupo ? 'Creando...' : 'Crear grupo'}
-            </button>
+          <form onSubmit={handleCrearGrupo} className="form-grupo-nuevo">
+            <div className="form__row">
+              <input
+                type="text"
+                placeholder="Nombre del grupo (ej: Salida 14 mayo)"
+                value={formGrupo.nombre}
+                onChange={(e) => setFormGrupo({ ...formGrupo, nombre: e.target.value })}
+                required
+              />
+              <select
+                value={formGrupo.modo}
+                onChange={(e) => setFormGrupo({ ...formGrupo, modo: e.target.value })}
+              >
+                <option value="competitivo">Competitivo</option>
+                <option value="colaborativo">Colaborativo</option>
+              </select>
+              <button type="submit" disabled={guardandoGrupo} className="btn">
+                {guardandoGrupo ? 'Creando...' : 'Crear grupo'}
+              </button>
+            </div>
+            <p className="form__help">
+              {formGrupo.modo === 'colaborativo'
+                ? 'Cada equipo juega una fase distinta y luego se unen en las fases conjuntas.'
+                : 'Todos los equipos juegan todas las fases de forma independiente.'}
+            </p>
           </form>
         </div>
 
-        {/* Lista de grupos */}
         <div className="section-header" style={{ marginTop: '24px' }}>
           <h2>Grupos ({grupos.length})</h2>
         </div>
@@ -258,6 +273,9 @@ export default function GruposManager() {
                   <div className="card__title-group">
                     <h3 className="card__title">{grupo.nombre}</h3>
                     <code className="code-badge code-badge--lg">{grupo.codigo}</code>
+                    <span className={`modo-badge modo-badge--${grupo.modo ?? 'competitivo'}`}>
+                      {grupo.modo === 'colaborativo' ? 'Colaborativo' : 'Competitivo'}
+                    </span>
                     <button
                       onClick={() => toggleActivo(grupo)}
                       className={`badge badge--btn ${grupo.activo ? 'badge--active' : 'badge--inactive'}`}
@@ -302,7 +320,11 @@ export default function GruposManager() {
 
                 {expandido === grupo.id && (
                   <div className="card__body">
-                    <ListaEquipos grupoId={grupo.id} epocas={epocas} />
+                    <ListaEquipos
+                      grupoId={grupo.id}
+                      epocas={epocas}
+                      modoGrupo={grupo.modo ?? 'competitivo'}
+                    />
                   </div>
                 )}
               </div>

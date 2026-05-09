@@ -10,6 +10,9 @@ const initialState = {
   experienciaId: null,
   epocaActualId: null,
   progreso: null,
+  grupoModo: null,
+  faseAsignadaId: null,
+  epocaConjunta: false,
 }
 
 function gameReducer(state, action) {

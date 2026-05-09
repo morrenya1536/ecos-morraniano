@@ -153,7 +153,9 @@ export const subscribeEquipos = (grupoId, callback) =>
 
 // ─── Progreso de época ─────────────────────────────────────────────────────
 const progresoDoc = (grupoId, equipoId, epocaId) =>
-  doc(db, 'grupos', grupoId, 'equipos', equipoId, 'progreso', epocaId)
+  equipoId === 'conjunto'
+    ? doc(db, 'grupos', grupoId, 'progresoConjunto', epocaId)
+    : doc(db, 'grupos', grupoId, 'equipos', equipoId, 'progreso', epocaId)
 
 export const initProgresoEpoca = (grupoId, equipoId, epocaId, extra = {}) =>
   setDoc(progresoDoc(grupoId, equipoId, epocaId), {
@@ -236,6 +238,24 @@ export const subscribeProgreso = (grupoId, equipoId, callback) =>
     collection(db, 'grupos', grupoId, 'equipos', equipoId, 'progreso'),
     callback
   )
+
+export const getGrupo = (grupoId) => getDoc(doc(db, 'grupos', grupoId))
+
+export const getEquipo = (grupoId, equipoId) =>
+  getDoc(doc(db, 'grupos', grupoId, 'equipos', equipoId))
+
+export const subscribeProgresoConjunto = (grupoId, callback) =>
+  onSnapshot(collection(db, 'grupos', grupoId, 'progresoConjunto'), callback)
+
+export const marcarEquipoListo = (grupoId, epocaId, equipoId) =>
+  setDoc(
+    doc(db, 'grupos', grupoId, 'fasesConjuntas', epocaId),
+    { equiposListos: { [equipoId]: Timestamp.now() } },
+    { merge: true }
+  )
+
+export const subscribeFaseConjunta = (grupoId, epocaId, callback) =>
+  onSnapshot(doc(db, 'grupos', grupoId, 'fasesConjuntas', epocaId), callback)
 
 // ─── Ranking ───────────────────────────────────────────────────────────────
 export const writeRanking = (data) =>

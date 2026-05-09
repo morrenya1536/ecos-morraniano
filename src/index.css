@@ -1530,3 +1530,128 @@ select option { background: var(--color-surface); }
   font-weight: 600;
   margin-top: 4px;
 }
+
+/* ─── Modo badge (coordinator) ───────────────────────────────────────────── */
+.modo-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.modo-badge--competitivo { background: rgba(233, 69, 96, 0.18); color: var(--color-accent); }
+.modo-badge--colaborativo { background: rgba(76, 175, 80, 0.18); color: var(--color-success); }
+
+/* ─── Texto conjunto ─────────────────────────────────────────────────────── */
+.texto-conjunto {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ─── Waiting inline ─────────────────────────────────────────────────────── */
+.waiting-inline {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  margin-top: var(--gap);
+}
+
+.waiting-inline__texto {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.waiting-inline__equipos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.waiting-equipo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
+}
+.waiting-equipo--done { border-left-color: var(--color-success); }
+.waiting-equipo__nombre { font-size: 0.875rem; }
+
+/* ─── Ranking page ───────────────────────────────────────────────────────── */
+.ranking-page .page__content {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--gap);
+}
+
+.ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ranking-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  border-left: 3px solid transparent;
+}
+.ranking-item--pos-1 { border-left-color: #ffd700; }
+.ranking-item--pos-2 { border-left-color: #c0c0c0; }
+.ranking-item--pos-3 { border-left-color: #cd7f32; }
+.ranking-item--yo { background: rgba(233, 69, 96, 0.1); border-color: var(--color-accent); }
+
+.ranking-item__pos {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  min-width: 28px;
+}
+.ranking-item__info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ranking-item__nombre { font-weight: 600; }
+.ranking-item__tiempo {
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: var(--color-accent);
+}
+
+/* ─── EpochComplete ranking block ────────────────────────────────────────── */
+.epoch-complete__ranking {
+  padding: 0 var(--gap-lg);
+  margin-bottom: var(--gap);
+}
+.epoch-complete__ranking-pos {
+  text-align: center;
+  font-size: 1.1rem;
+  margin-bottom: var(--gap);
+  color: var(--color-text-muted);
+}
+.epoch-complete__ranking-pos strong {
+  color: var(--color-text);
+  font-size: 1.4rem;
+}
+
+/* ─── Briefing conjunta ──────────────────────────────────────────────────── */
+.briefing__conjunta {
+  margin-top: var(--gap);
+  padding: var(--gap);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}

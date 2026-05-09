@@ -1,18 +1,47 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useGame } from '../../context/GameContext'
-import { getExperiencia, subscribeEpocas, subscribeProgreso } from '../../services/firestore'
+import {
+  getExperiencia,
+  subscribeEpocas,
+  subscribeProgreso,
+  subscribeProgresoConjunto,
+  subscribeEquipos,
+  subscribeProgresoEpoca,
+  getGrupo,
+  getEquipo,
+} from '../../services/firestore'
 
 function GlobalTimer({ progresos }) {
   const [elapsed, setElapsed] = useState(null)
 
   useEffect(() => {
-    const inicios = Object.values(progresos)
-      .filter(p => p.tiempoInicio)
-      .map(p => p.tiempoInicio.toMillis())
-    if (inicios.length === 0) { setElapsed(null); return }
-    const start = Math.min(...inicios)
-    const tick = () => setElapsed(Math.floor((Date.now() - start) / 1000))
+    // New schema: use inicioActual + tiempoAcumuladoMs
+    // Legacy fallback: tiempoInicio
+    const calcBase = () => {
+      let base = 0
+      let startMs = null
+      Object.values(progresos).forEach(p => {
+        if (!p) return
+        if ('tiempoAcumuladoMs' in p) {
+          base += p.tiempoAcumuladoMs ?? 0
+          if (p.inicioActual && p.estado === 'activo') {
+            const t = p.inicioActual.toMillis()
+            startMs = startMs === null ? t : Math.min(startMs, t)
+          }
+        } else if (p.tiempoInicio) {
+          const t = p.tiempoInicio.toMillis()
+          startMs = startMs === null ? t : Math.min(startMs, t)
+        }
+      })
+      return { base, startMs }
+    }
+    const { base, startMs } = calcBase()
+    if (startMs === null && base === 0) { setElapsed(null); return }
+    const tick = () => {
+      const current = startMs ? base + Date.now() - startMs : base
+      setElapsed(Math.floor(current / 1000))
+    }
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
@@ -35,14 +64,14 @@ function GlobalTimer({ progresos }) {
   )
 }
 
-function ModalConfirmacion({ epoca, onConfirmar, onCancelar }) {
+function ModalConfirmacion({ fase, onConfirmar, onCancelar }) {
   return (
     <div className="modal-overlay" onClick={onCancelar}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <h2 className="modal__titulo">¿Preparados?</h2>
         <p className="modal__texto">
-          Vais a empezar <strong>{epoca.nombre}</strong>.<br />
-          El cronómetro arrancará al pulsar "Empezar" y no se puede pausar.
+          Vais a empezar <strong>{fase.nombre}</strong>.<br />
+          El cronómetro arrancará al pulsar "Empezar".
         </p>
         <div className="modal__actions">
           <button className="btn btn--ghost" onClick={onCancelar}>Espera</button>
@@ -54,22 +83,39 @@ function ModalConfirmacion({ epoca, onConfirmar, onCancelar }) {
 }
 
 export default function PlayerHome() {
-  const { game, resetGame } = useGame()
+  const { game, setSesion, resetGame } = useGame()
   const navigate = useNavigate()
+
   const [experiencia, setExperiencia] = useState(null)
   const [epocas, setEpocas] = useState([])
   const [progresos, setProgresos] = useState({})
+  const [progresosLoaded, setProgresosLoaded] = useState(false)
+  const [grupoModo, setGrupoModo] = useState(null)
+  const [faseAsignadaId, setFaseAsignadaId] = useState(null)
+  const [todosEquipos, setTodosEquipos] = useState([])
+  const [otrosEquiposProgreso, setOtrosEquiposProgreso] = useState({})
   const [cargando, setCargando] = useState(true)
-  const [modalEpoca, setModalEpoca] = useState(null)
+  const [modalFase, setModalFase] = useState(null)
 
+  // Load experience, group mode, and assigned fase
   useEffect(() => {
-    if (!game.experienciaId) return
-    getExperiencia(game.experienciaId).then(snap => {
-      if (snap.exists()) setExperiencia({ id: snap.id, ...snap.data() })
+    if (!game.experienciaId || !game.grupoId || !game.equipoId) return
+    Promise.all([
+      getExperiencia(game.experienciaId),
+      getGrupo(game.grupoId),
+      getEquipo(game.grupoId, game.equipoId),
+    ]).then(([expSnap, grupoSnap, equipoSnap]) => {
+      if (expSnap.exists()) setExperiencia({ id: expSnap.id, ...expSnap.data() })
+      const modo = grupoSnap.exists() ? (grupoSnap.data().modo ?? 'competitivo') : 'competitivo'
+      const faseId = equipoSnap.exists() ? (equipoSnap.data().epocaAsignadaId ?? null) : null
+      setGrupoModo(modo)
+      setFaseAsignadaId(faseId)
+      setSesion({ grupoModo: modo, faseAsignadaId: faseId })
       setCargando(false)
     })
-  }, [game.experienciaId])
+  }, [game.experienciaId, game.grupoId, game.equipoId])
 
+  // Subscribe to epochs
   useEffect(() => {
     if (!game.experienciaId) return
     return subscribeEpocas(game.experienciaId, snap => {
@@ -81,47 +127,129 @@ export default function PlayerHome() {
     })
   }, [game.experienciaId])
 
+  // Subscribe to individual progreso
   useEffect(() => {
     if (!game.grupoId || !game.equipoId) return
     return subscribeProgreso(game.grupoId, game.equipoId, snap => {
       const map = {}
       snap.docs.forEach(d => { map[d.id] = d.data() })
-      setProgresos(map)
+      setProgresos(prev => ({ ...prev, ...map }))
+      setProgresosLoaded(true)
     })
   }, [game.grupoId, game.equipoId])
 
-  const getEstado = (epoca, idx) => {
-    const prog = progresos[epoca.id]
+  // Subscribe to joint progreso
+  useEffect(() => {
+    if (!game.grupoId) return
+    return subscribeProgresoConjunto(game.grupoId, snap => {
+      const map = {}
+      snap.docs.forEach(d => { map[d.id] = d.data() })
+      setProgresos(prev => ({ ...prev, ...map }))
+    })
+  }, [game.grupoId])
+
+  // Subscribe to all equipos (for collaborative unlock)
+  useEffect(() => {
+    if (!game.grupoId) return
+    return subscribeEquipos(game.grupoId, snap => {
+      setTodosEquipos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    })
+  }, [game.grupoId])
+
+  // Subscribe to other teams' progreso when in collaborative mode and my fase is done
+  const miProgFaseAsignada = faseAsignadaId ? progresos[faseAsignadaId] : null
+  const miFaseCompletada = miProgFaseAsignada?.estado === 'completado'
+
+  useEffect(() => {
+    if (grupoModo !== 'colaborativo' || !miFaseCompletada || !game.grupoId) return
+    const otros = todosEquipos.filter(e => e.id !== game.equipoId)
+    if (!otros.length) return
+    const unsubs = otros.map(eq => {
+      const faseId = eq.epocaAsignadaId
+      if (!faseId) return () => {}
+      return subscribeProgresoEpoca(game.grupoId, eq.id, faseId, snap => {
+        setOtrosEquiposProgreso(prev => ({
+          ...prev,
+          [eq.id]: snap.exists() ? snap.data() : null,
+        }))
+      })
+    })
+    return () => unsubs.forEach(u => u())
+  }, [grupoModo, miFaseCompletada, todosEquipos, game.grupoId, game.equipoId])
+
+  // Auto-navigate for single-fase experience
+  useEffect(() => {
+    if (!progresosLoaded || cargando || !grupoModo || epocas.length === 0) return
+    const fasesInd = epocas.filter(e => !e.conjunta)
+    if (fasesInd.length !== 1) return
+    const fase = fasesInd[0]
+    const prog = progresos[fase.id]
+    if (!prog) {
+      navigate(`/jugador/briefing/${fase.id}`, { replace: true })
+    } else if (prog.estado === 'activo' || prog.estado === 'pausado') {
+      navigate(`/jugador/epoca/${fase.id}`, { replace: true })
+    }
+  }, [progresosLoaded, cargando, grupoModo, epocas, progresos, navigate])
+
+  // Computed: are all other teams done with their individual phases?
+  const otros = todosEquipos.filter(e => e.id !== game.equipoId)
+  const todasFasesAsignadasCompletadas = grupoModo === 'colaborativo' &&
+    miFaseCompletada &&
+    otros.length > 0 &&
+    otros.every(eq => {
+      if (!eq.epocaAsignadaId) return true
+      return otrosEquiposProgreso[eq.id]?.estado === 'completado'
+    })
+
+  // Which phases to show
+  const fasesParaMostrar = useMemo(() => {
+    if (!grupoModo) return epocas
+    if (grupoModo === 'competitivo') return epocas.filter(e => !e.conjunta)
+    // Collaborative
+    const miFase = epocas.find(e => e.id === faseAsignadaId)
+    const result = miFase ? [miFase] : []
+    if (todasFasesAsignadasCompletadas) {
+      return [...result, ...epocas.filter(e => e.conjunta)]
+    }
+    return result
+  }, [grupoModo, epocas, faseAsignadaId, todasFasesAsignadasCompletadas])
+
+  const getEstado = (fase) => {
+    const prog = progresos[fase.id]
     if (prog?.estado === 'completado') return 'completada'
-    if (prog?.estado === 'activo') return 'activa'
-    if (idx === 0) return 'disponible'
-    const anterior = epocas[idx - 1]
-    if (progresos[anterior?.id]?.estado === 'completado') return 'disponible'
-    return 'bloqueada'
+    if (prog?.estado === 'activo' || prog?.estado === 'pausado') return 'activa'
+    if (!grupoModo) {
+      // Legacy sequential
+      const idx = epocas.indexOf(fase)
+      if (idx === 0) return 'disponible'
+      return progresos[epocas[idx - 1]?.id]?.estado === 'completado' ? 'disponible' : 'bloqueada'
+    }
+    if (grupoModo === 'competitivo') return 'disponible'
+    if (grupoModo === 'colaborativo') {
+      if (fase.conjunta) return todasFasesAsignadasCompletadas ? 'disponible' : 'bloqueada'
+      return 'disponible'
+    }
+    return 'disponible'
   }
 
-  const getMotivoBloqueo = (idx) => {
-    if (idx === 0) return null
-    return `Disponible al completar ${epocas[idx - 1]?.nombre}`
-  }
-
-  const handleClickEpoca = (epoca, estado, idx) => {
+  const handleClickFase = (fase) => {
+    const estado = getEstado(fase)
     if (estado === 'bloqueada') return
     if (estado === 'completada') {
-      navigate(`/jugador/epoca/${epoca.id}/completada`)
+      navigate(`/jugador/epoca/${fase.id}/completada`)
       return
     }
     if (estado === 'activa') {
-      navigate(`/jugador/epoca/${epoca.id}`)
+      navigate(`/jugador/epoca/${fase.id}`)
       return
     }
-    setModalEpoca(epoca)
+    setModalFase(fase)
   }
 
   const confirmarEmpezar = () => {
-    const epoca = modalEpoca
-    setModalEpoca(null)
-    navigate(`/jugador/briefing/${epoca.id}`)
+    const fase = modalFase
+    setModalFase(null)
+    navigate(`/jugador/briefing/${fase.id}`)
   }
 
   if (cargando) {
@@ -134,11 +262,11 @@ export default function PlayerHome() {
 
   return (
     <main className="page page--dark player-home">
-      {modalEpoca && (
+      {modalFase && (
         <ModalConfirmacion
-          epoca={modalEpoca}
+          fase={modalFase}
           onConfirmar={confirmarEmpezar}
-          onCancelar={() => setModalEpoca(null)}
+          onCancelar={() => setModalFase(null)}
         />
       )}
 
@@ -154,25 +282,31 @@ export default function PlayerHome() {
       <GlobalTimer progresos={progresos} />
 
       <section className="player-home__epocas">
-        {epocas.map((epoca, idx) => {
-          const estado = getEstado(epoca, idx)
-          const prog = progresos[epoca.id]
+        {fasesParaMostrar.map((fase) => {
+          const estado = getEstado(fase)
+          const prog = progresos[fase.id]
           return (
             <div
-              key={epoca.id}
+              key={fase.id}
               className={`epoca-card epoca-card--${estado}`}
-              onClick={() => handleClickEpoca(epoca, estado, idx)}
+              onClick={() => handleClickFase(fase)}
               role={estado !== 'bloqueada' ? 'button' : undefined}
             >
               <div className="epoca-card__header">
-                <span className="epoca-card__num">{idx + 1}</span>
                 <div className="epoca-card__info">
-                  <h2 className="epoca-card__nombre">{epoca.nombre}</h2>
-                  {estado === 'bloqueada' && (
-                    <p className="epoca-card__bloqueo">{getMotivoBloqueo(idx)}</p>
+                  <h2 className="epoca-card__nombre">{fase.nombre}</h2>
+                  {fase.conjunta && (
+                    <span className="texto-conjunto">Fase conjunta</span>
                   )}
-                  {estado !== 'bloqueada' && epoca.descripcion && (
-                    <p className="epoca-card__desc">{epoca.descripcion}</p>
+                  {estado === 'bloqueada' && (
+                    <p className="epoca-card__bloqueo">
+                      {fase.conjunta
+                        ? 'Se desbloqueará cuando todos los equipos completen sus fases.'
+                        : 'Completa tu fase asignada primero.'}
+                    </p>
+                  )}
+                  {estado !== 'bloqueada' && fase.descripcion && (
+                    <p className="epoca-card__desc">{fase.descripcion}</p>
                   )}
                 </div>
                 <span className={`estado-badge estado-badge--${estado}`}>
@@ -182,7 +316,7 @@ export default function PlayerHome() {
                   {estado === 'bloqueada' && '🔒'}
                 </span>
               </div>
-              {prog?.estado === 'completada' && (
+              {prog?.estado === 'completado' && (
                 <div className="epoca-card__stats">
                   <span>{prog.puntosCompletados?.length ?? 0} puntos</span>
                   {prog.penalizacionMinutos > 0 && (
@@ -193,9 +327,34 @@ export default function PlayerHome() {
             </div>
           )
         })}
-        {epocas.length === 0 && (
+
+        {fasesParaMostrar.length === 0 && !cargando && (
           <div className="empty-state">
-            <p>No hay épocas disponibles todavía.</p>
+            {grupoModo === 'colaborativo' && !faseAsignadaId
+              ? <p>No tienes ninguna fase asignada. Contacta con el coordinador.</p>
+              : <p>No hay fases disponibles todavía.</p>
+            }
+          </div>
+        )}
+
+        {grupoModo === 'colaborativo' && miFaseCompletada && !todasFasesAsignadasCompletadas && (
+          <div className="waiting-inline">
+            <p className="waiting-inline__texto">
+              Esperando a los otros equipos para continuar con las fases conjuntas...
+            </p>
+            <div className="waiting-inline__equipos">
+              {otros.map(eq => {
+                const done = otrosEquiposProgreso[eq.id]?.estado === 'completado'
+                return (
+                  <div key={eq.id} className={`waiting-equipo ${done ? 'waiting-equipo--done' : ''}`}>
+                    <span className="waiting-equipo__nombre">{eq.nombre}</span>
+                    <span className={`estado-badge estado-badge--${done ? 'completada' : 'activa'}`}>
+                      {done ? '✓' : '...'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
       </section>

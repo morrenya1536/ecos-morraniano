@@ -4,31 +4,32 @@ import { useGame } from '../../context/GameContext'
 import {
   getProgresoEpoca,
   initProgresoEpoca,
+  subscribeEquipos,
+  marcarEquipoListo,
+  subscribeFaseConjunta,
 } from '../../services/firestore'
 import { getDocs, collection } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 
 export default function BriefingScreen() {
   const { epocaId } = useParams()
-  const { game } = useGame()
+  const { game, setSesion } = useGame()
   const navigate = useNavigate()
   const [epoca, setEpoca] = useState(null)
   const [primerPunto, setPrimerPunto] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [empezando, setEmpezando] = useState(false)
 
+  // Joint phase state
+  const [esConjunta, setEsConjunta] = useState(false)
+  const [todosEquipos, setTodosEquipos] = useState([])
+  const [equiposListos, setEquiposListos] = useState({})
+  const [yoListo, setYoListo] = useState(false)
+
   useEffect(() => {
-    if (!game.experienciaId || !epocaId) return
+    if (!game.experienciaId || !epocaId || !game.grupoId || !game.equipoId) return
 
     const load = async () => {
-      // Check if progreso already exists → skip briefing
-      const progSnap = await getProgresoEpoca(game.grupoId, game.equipoId, epocaId)
-      if (progSnap.exists() && progSnap.data().estado === 'activo') {
-        navigate(`/jugador/epoca/${epocaId}`, { replace: true })
-        return
-      }
-
-      // Load epoch
       const epocasSnap = await getDocs(
         collection(db, 'experiencias', game.experienciaId, 'epocas')
       )
@@ -37,7 +38,19 @@ export default function BriefingScreen() {
         .find(e => e.id === epocaId)
       setEpoca(epocaData)
 
-      // Load first punto (orden = 0 or minimum)
+      const conjunta = !!(epocaData?.conjunta && game.grupoModo === 'colaborativo')
+      setEsConjunta(conjunta)
+      const equipoIdProgreso = conjunta ? 'conjunto' : game.equipoId
+
+      // Check if progreso already active → skip briefing
+      const progSnap = await getProgresoEpoca(game.grupoId, equipoIdProgreso, epocaId)
+      if (progSnap.exists() && (progSnap.data().estado === 'activo' || progSnap.data().estado === 'pausado')) {
+        setSesion({ epocaConjunta: conjunta })
+        navigate(`/jugador/epoca/${epocaId}`, { replace: true })
+        return
+      }
+
+      // Load first punto
       const puntosSnap = await getDocs(
         collection(db, 'experiencias', game.experienciaId, 'epocas', epocaId, 'puntos')
       )
@@ -49,17 +62,39 @@ export default function BriefingScreen() {
       setCargando(false)
     }
     load()
-  }, [epocaId, game.experienciaId, game.grupoId, game.equipoId, navigate])
+  }, [epocaId, game.experienciaId, game.grupoId, game.equipoId, game.grupoModo, navigate, setSesion])
+
+  // Subscribe to equipos and readiness doc (joint phases only)
+  useEffect(() => {
+    if (!esConjunta || !game.grupoId) return
+    const unsub1 = subscribeEquipos(game.grupoId, snap => {
+      setTodosEquipos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    })
+    const unsub2 = subscribeFaseConjunta(game.grupoId, epocaId, snap => {
+      setEquiposListos(snap.exists() ? (snap.data().equiposListos ?? {}) : {})
+    })
+    return () => { unsub1(); unsub2() }
+  }, [esConjunta, game.grupoId, epocaId])
+
+  const handleConfirmarPresencia = async () => {
+    setYoListo(true)
+    await marcarEquipoListo(game.grupoId, epocaId, game.equipoId)
+  }
+
+  const todosListos = esConjunta && todosEquipos.length > 0 &&
+    todosEquipos.every(eq => eq.id in equiposListos)
 
   const handleEmpezar = async () => {
     setEmpezando(true)
-    await initProgresoEpoca(game.grupoId, game.equipoId, epocaId, {
+    const equipoIdProgreso = esConjunta ? 'conjunto' : game.equipoId
+    await initProgresoEpoca(game.grupoId, equipoIdProgreso, epocaId, {
       experienciaId: game.experienciaId,
       epocaId,
       grupoId: game.grupoId,
-      equipoId: game.equipoId,
-      equipoNombre: game.equipoNombre,
+      equipoId: equipoIdProgreso,
+      equipoNombre: esConjunta ? 'conjunto' : game.equipoNombre,
     })
+    setSesion({ epocaConjunta: esConjunta })
     navigate(`/jugador/epoca/${epocaId}`)
   }
 
@@ -95,7 +130,6 @@ export default function BriefingScreen() {
           </div>
         )}
 
-        {/* Primera pista: la del primer punto */}
         {primerPunto?.pistaEntrada && (
           <div className="briefing__pista">
             <p className="briefing__pista-label">Tu primera misión:</p>
@@ -119,16 +153,58 @@ export default function BriefingScreen() {
             )}
           </div>
         )}
+
+        {esConjunta && (
+          <div className="briefing__conjunta">
+            <p className="texto-conjunto">Fase conjunta — todos los equipos juntos</p>
+            <div className="waiting-inline">
+              <p className="waiting-inline__texto">Confirmad vuestra presencia antes de empezar:</p>
+              <div className="waiting-inline__equipos">
+                {todosEquipos.map(eq => {
+                  const listo = eq.id in equiposListos
+                  return (
+                    <div key={eq.id} className={`waiting-equipo ${listo ? 'waiting-equipo--done' : ''}`}>
+                      <span className="waiting-equipo__nombre">{eq.nombre}</span>
+                      <span className={`estado-badge estado-badge--${listo ? 'completada' : 'activa'}`}>
+                        {listo ? '✓' : '...'}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="briefing__footer">
-        <button
-          onClick={handleEmpezar}
-          disabled={empezando}
-          className="btn btn--primary btn--large"
-        >
-          {empezando ? 'Iniciando...' : 'Entendido, empezamos'}
-        </button>
+        {esConjunta ? (
+          <>
+            {!yoListo && !(game.equipoId in equiposListos) && (
+              <button
+                onClick={handleConfirmarPresencia}
+                className="btn btn--ghost btn--large"
+              >
+                Confirmar presencia
+              </button>
+            )}
+            <button
+              onClick={handleEmpezar}
+              disabled={!todosListos || empezando}
+              className="btn btn--primary btn--large"
+            >
+              {empezando ? 'Iniciando...' : todosListos ? 'Empezar fase conjunta' : 'Esperando equipos...'}
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={handleEmpezar}
+            disabled={empezando}
+            className="btn btn--primary btn--large"
+          >
+            {empezando ? 'Iniciando...' : 'Entendido, empezamos'}
+          </button>
+        )}
       </div>
     </main>
   )
