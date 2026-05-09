@@ -1803,6 +1803,48 @@ select option { background: var(--color-surface); }
   margin-bottom: 10px;
 }
 
+/* ─── Tab Grupos — secciones por experiencia ─────────────────────────────── */
+.grupos-todas-experiencias {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) * 2);
+}
+.grupos-exp-seccion__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--gap);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+.grupos-exp-seccion__titulo {
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+}
+.grupos-experiencia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* Formulario nuevo grupo (inline en tab Grupos) */
+.form-grupo-nuevo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  border: 1px dashed var(--color-border);
+}
+.form__help {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
 .ranking-item__pos {
   font-size: 0.8rem;
   font-weight: 700;

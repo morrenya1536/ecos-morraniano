@@ -5,12 +5,19 @@ import { useCoordinator } from '../../hooks/useCoordinator'
 import {
   subscribeExperiencias,
   subscribeGruposAll,
+  subscribeGruposByExperiencia,
   subscribeEquipos,
   subscribeProgresoEpoca,
   subscribeProgreso,
   resetearFase,
   getEpocas,
+  createGrupo,
+  deleteGrupo,
+  updateGrupo,
+  createEquipo,
+  deleteEquipo,
 } from '../../services/firestore'
+import { generarCodigo } from '../../utils/helpers'
 import LoadingScreen from '../../components/shared/LoadingScreen'
 
 function formatTime(s) {
@@ -43,7 +50,7 @@ function useElapsedCoord(progreso) {
   return elapsed
 }
 
-// ─── EquipoRow — fila de equipo con estado en tiempo real ─────────────────
+// ─── Tab Partidas: EquipoRow ───────────────────────────────────────────────
 
 function EquipoRow({ grupoId, equipo, modoGrupo }) {
   const [progreso, setProgreso] = useState(undefined)
@@ -131,14 +138,10 @@ function EquipoRow({ grupoId, equipo, modoGrupo }) {
   )
 }
 
-// ─── GrupoEstadoTracker — worker sin UI, siempre montado ──────────────────
-// Suscribe a equipos + progreso + épocas y calcula el estado del grupo.
-// Solo notifica al padre cuando todos los datos están cargados (nunca durante la carga).
+// ─── Tab Partidas: GrupoEstadoTracker (worker sin UI) ─────────────────────
 
 function GrupoEstadoTracker({ grupo, onEstadoChange }) {
   const modoGrupo = grupo.modo ?? 'competitivo'
-
-  // null = todavía no ha llegado la suscripción; [] = llegó vacío; [...] = datos reales
   const [equipos, setEquipos] = useState(null)
   const [epocas, setEpocas] = useState(null)
   const [progresoPorEquipo, setProgresoPorEquipo] = useState({})
@@ -156,7 +159,6 @@ function GrupoEstadoTracker({ grupo, onEstadoChange }) {
       .catch(() => setEpocas([]))
   }, [grupo.experienciaId])
 
-  // Reconstruir suscripciones de progreso cuando cambia la lista de equipos
   const equipoIdsKey = (equipos ?? []).map(e => e.id).sort().join(',')
   useEffect(() => {
     if (!equipos || !equipos.length) return
@@ -171,10 +173,8 @@ function GrupoEstadoTracker({ grupo, onEstadoChange }) {
     return () => cancelFns.forEach(c => c())
   }, [grupo.id, equipoIdsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Solo calcular y notificar cuando TODOS los datos han llegado de Firestore
   useEffect(() => {
     if (equipos === null || epocas === null) return
-
     const todosCargados = equipos.every(eq => eq.id in progresoPorEquipo)
     if (!todosCargados) return
 
@@ -190,24 +190,23 @@ function GrupoEstadoTracker({ grupo, onEstadoChange }) {
         if (!epocasNormales.length) {
           estado = 'en-curso'
         } else {
-          const finalizado = epocasNormales.every(epoca =>
+          const fin = epocasNormales.every(ep =>
             equipos.some(eq =>
-              (progresoPorEquipo[eq.id] ?? []).some(p => p.id === epoca.id && p.estado === 'completado')
+              (progresoPorEquipo[eq.id] ?? []).some(p => p.id === ep.id && p.estado === 'completado')
             )
           )
-          estado = finalizado ? 'finalizado' : 'en-curso'
+          estado = fin ? 'finalizado' : 'en-curso'
         }
       } else {
-        // Competitivo: todos los equipos completaron todas las épocas
         if (!epocas.length) {
           estado = 'en-curso'
         } else {
-          const finalizado = equipos.every(eq =>
-            epocas.every(epoca =>
-              (progresoPorEquipo[eq.id] ?? []).some(p => p.id === epoca.id && p.estado === 'completado')
+          const fin = equipos.every(eq =>
+            epocas.every(ep =>
+              (progresoPorEquipo[eq.id] ?? []).some(p => p.id === ep.id && p.estado === 'completado')
             )
           )
-          estado = finalizado ? 'finalizado' : 'en-curso'
+          estado = fin ? 'finalizado' : 'en-curso'
         }
       }
     }
@@ -218,9 +217,7 @@ function GrupoEstadoTracker({ grupo, onEstadoChange }) {
   return null
 }
 
-// ─── GrupoCardDisplay — tarjeta colapsable visible ────────────────────────
-// Solo gestiona la visualización. No tiene efecto sobre el estado de clasificación
-// del grupo, por lo que puede montarse/desmontarse libremente.
+// ─── Tab Partidas: GrupoCardDisplay (tarjeta colapsable visible) ──────────
 
 function GrupoCardDisplay({ grupo }) {
   const modoGrupo = grupo.modo ?? 'competitivo'
@@ -248,11 +245,6 @@ function GrupoCardDisplay({ grupo }) {
 
       {abierto && (
         <div className="partida-card__body">
-          <div className="partida-card__body-actions">
-            <Link to={`/coordinador/grupos/${grupo.experienciaId}`} className="btn btn--ghost btn--small">
-              Gestionar
-            </Link>
-          </div>
           <div className="partida-card__equipos">
             {equipos.map(eq => (
               <EquipoRow key={eq.id} grupoId={grupo.id} equipo={eq} modoGrupo={modoGrupo} />
@@ -264,7 +256,7 @@ function GrupoCardDisplay({ grupo }) {
   )
 }
 
-// ─── TabPartidas ───────────────────────────────────────────────────────────
+// ─── Tab Partidas ──────────────────────────────────────────────────────────
 
 const SECCIONES_PARTIDAS = [
   { key: 'en-curso',   label: 'En curso' },
@@ -273,8 +265,6 @@ const SECCIONES_PARTIDAS = [
 ]
 
 function TabPartidas({ grupos, experiencias }) {
-  // Solo contiene estados YA CONFIRMADOS (nunca 'loading').
-  // Los trackers están siempre montados y actualizan este mapa cuando tienen datos completos.
   const [estadosGrupo, setEstadosGrupo] = useState({})
   const [seccionesAbiertas, setSeccionesAbiertas] = useState({
     'en-curso': true,
@@ -282,7 +272,6 @@ function TabPartidas({ grupos, experiencias }) {
     finalizado: false,
   })
 
-  // Ignora el 'loading' inicial — solo acepta estados reales confirmados
   const handleEstadoChange = useCallback((grupoId, estado) => {
     setEstadosGrupo(prev => {
       if (prev[grupoId] === estado) return prev
@@ -316,12 +305,10 @@ function TabPartidas({ grupos, experiencias }) {
 
   return (
     <div className="partidas-secciones">
-      {/* Trackers siempre montados — nulo en el DOM, calculan estado sin UI */}
       {gruposActivos.map(g => (
         <GrupoEstadoTracker key={g.id} grupo={g} onEstadoChange={handleEstadoChange} />
       ))}
 
-      {/* Indicador mientras los trackers clasifican los grupos */}
       {nSinClasificar > 0 && (
         <p className="partidas-cargando text-muted text-small">Cargando partidas…</p>
       )}
@@ -353,61 +340,319 @@ function TabPartidas({ grupos, experiencias }) {
   )
 }
 
-// ─── TabGrupos ─────────────────────────────────────────────────────────────
+// ─── Tab Grupos: ListaEquipos ──────────────────────────────────────────────
 
-function GrupoResumen({ grupo, expById }) {
-  const [nEquipos, setNEquipos] = useState(null)
-  const modoGrupo = grupo.modo ?? 'competitivo'
-  const exp = expById[grupo.experienciaId]
+function ListaEquipos({ grupoId, epocas, modoGrupo }) {
+  const [equipos, setEquipos] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [form, setForm] = useState({ nombre: '', epocaAsignadaId: '', minJugadores: 3, maxJugadores: 6 })
+  const [guardando, setGuardando] = useState(false)
+  const [confirmar, setConfirmar] = useState(null)
 
-  useEffect(() =>
-    subscribeEquipos(grupo.id, snap => setNEquipos(snap.size)),
-  [grupo.id])
+  useEffect(() => {
+    return subscribeEquipos(grupoId, snap => {
+      setEquipos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      setCargando(false)
+    })
+  }, [grupoId])
+
+  const handleAddEquipo = async (e) => {
+    e.preventDefault()
+    if (!form.nombre.trim()) return
+    setGuardando(true)
+    try {
+      await createEquipo(grupoId, { ...form, codigo: generarCodigo(4) })
+      setForm({ nombre: '', epocaAsignadaId: '', minJugadores: 3, maxJugadores: 6 })
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  if (cargando) return <p className="text-muted text-small">Cargando equipos...</p>
+
+  const fasesIndividuales = epocas.filter(e => !e.conjunta)
 
   return (
-    <div className="card">
-      <div className="card__header">
-        <div className="card__title-group">
-          <h3 className="card__title">{grupo.nombre}</h3>
-          <span className="modo-badge">
-            {modoGrupo === 'colaborativo' ? 'Colaborativo' : 'Competitivo'}
-          </span>
-          {nEquipos !== null && (
-            <span className="text-muted text-small">{nEquipos} equipos</span>
+    <div className="equipos-section">
+      {equipos.length === 0 ? (
+        <p className="text-muted text-small">Sin equipos. Añade el primero abajo.</p>
+      ) : (
+        <div className="equipos-list">
+          {equipos.map(eq => (
+            <div key={eq.id} className="equipo-item">
+              <div className="equipo-item__info">
+                <span className="equipo-item__nombre">{eq.nombre}</span>
+                <code className="code-badge">{eq.codigo}</code>
+                {modoGrupo === 'colaborativo' && eq.epocaAsignadaId && (
+                  <span className="text-muted text-small">
+                    {epocas.find(ep => ep.id === eq.epocaAsignadaId)?.nombre ?? '—'}
+                  </span>
+                )}
+                <span className="text-muted text-small">
+                  {eq.minJugadores}–{eq.maxJugadores} jug.
+                </span>
+              </div>
+              {confirmar === eq.id ? (
+                <span className="confirm-inline">
+                  <button
+                    onClick={() => { deleteEquipo(grupoId, eq.id); setConfirmar(null) }}
+                    className="btn btn--danger btn--small"
+                  >
+                    Eliminar
+                  </button>
+                  <button onClick={() => setConfirmar(null)} className="btn btn--ghost btn--small">
+                    Cancelar
+                  </button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => setConfirmar(eq.id)}
+                  className="btn btn--ghost btn--small btn--icon"
+                  title="Eliminar equipo"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={handleAddEquipo} className="form-equipo">
+        <p className="form__label">Añadir equipo</p>
+        <div className="form__row">
+          <input
+            type="text"
+            placeholder="Nombre del equipo"
+            value={form.nombre}
+            onChange={e => setForm({ ...form, nombre: e.target.value })}
+            required
+          />
+          {modoGrupo === 'colaborativo' && (
+            <select
+              value={form.epocaAsignadaId}
+              onChange={e => setForm({ ...form, epocaAsignadaId: e.target.value })}
+            >
+              <option value="">Fase asignada</option>
+              {fasesIndividuales.map(ep => (
+                <option key={ep.id} value={ep.id}>{ep.nombre}</option>
+              ))}
+            </select>
           )}
         </div>
-        <div className="card__actions">
-          <Link to={`/coordinador/grupos/${grupo.experienciaId}`} className="btn btn--ghost btn--small">
-            Gestionar
-          </Link>
+        <div className="form__row form__row--compact">
+          <label className="text-small text-muted">Mín. jug.</label>
+          <input
+            type="number"
+            min={1}
+            max={form.maxJugadores}
+            value={form.minJugadores}
+            onChange={e => setForm({ ...form, minJugadores: Number(e.target.value) })}
+            className="input--narrow"
+          />
+          <label className="text-small text-muted">Máx. jug.</label>
+          <input
+            type="number"
+            min={form.minJugadores}
+            max={20}
+            value={form.maxJugadores}
+            onChange={e => setForm({ ...form, maxJugadores: Number(e.target.value) })}
+            className="input--narrow"
+          />
+          <button type="submit" disabled={guardando} className="btn btn--small">
+            {guardando ? '...' : 'Añadir'}
+          </button>
         </div>
-      </div>
-      {exp && <p className="card__desc">{exp.nombre}</p>}
+      </form>
     </div>
   )
 }
 
-function TabGrupos({ grupos, experiencias }) {
-  const expById = useMemo(() => {
-    const m = {}
-    experiencias.forEach(e => { m[e.id] = e })
-    return m
-  }, [experiencias])
+// ─── Tab Grupos: GruposDeExperiencia ──────────────────────────────────────
 
-  if (!grupos.length) {
-    return <div className="empty-state"><p>No hay grupos creados.</p></div>
+function GruposDeExperiencia({ experiencia, coordinadorUid }) {
+  const [epocas, setEpocas] = useState([])
+  const [grupos, setGrupos] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [expandido, setExpandido] = useState(null)
+  const [formGrupo, setFormGrupo] = useState({ nombre: '', modo: 'competitivo' })
+  const [guardandoGrupo, setGuardandoGrupo] = useState(false)
+  const [confirmarEliminar, setConfirmarEliminar] = useState(null)
+
+  useEffect(() => {
+    getEpocas(experiencia.id)
+      .then(snap => setEpocas(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+      .catch(() => {})
+    return subscribeGruposByExperiencia(experiencia.id, snap => {
+      setGrupos(
+        snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (b.creadoEn?.seconds ?? 0) - (a.creadoEn?.seconds ?? 0))
+      )
+      setCargando(false)
+    })
+  }, [experiencia.id])
+
+  const handleCrearGrupo = async (e) => {
+    e.preventDefault()
+    if (!formGrupo.nombre.trim()) return
+    setGuardandoGrupo(true)
+    try {
+      const ref = await createGrupo({
+        nombre: formGrupo.nombre.trim(),
+        modo: formGrupo.modo,
+        codigo: generarCodigo(6),
+        experienciaId: experiencia.id,
+        activo: true,
+        creadoPor: coordinadorUid,
+      })
+      setFormGrupo({ nombre: '', modo: 'competitivo' })
+      setExpandido(ref.id)
+    } finally {
+      setGuardandoGrupo(false)
+    }
+  }
+
+  const handleEliminarGrupo = async (grupoId) => {
+    await deleteGrupo(grupoId)
+    setConfirmarEliminar(null)
+    if (expandido === grupoId) setExpandido(null)
   }
 
   return (
-    <div className="card-list">
-      {grupos.map(g => (
-        <GrupoResumen key={g.id} grupo={g} expById={expById} />
+    <div className="grupos-experiencia">
+      {cargando ? (
+        <p className="text-muted text-small">Cargando grupos...</p>
+      ) : grupos.length === 0 ? (
+        <p className="text-muted text-small">Sin grupos todavía.</p>
+      ) : (
+        <div className="card-list">
+          {grupos.map(grupo => (
+            <div key={grupo.id} className="card">
+              <div className="card__header">
+                <div className="card__title-group">
+                  <h3 className="card__title">{grupo.nombre}</h3>
+                  <code className="code-badge code-badge--lg">{grupo.codigo}</code>
+                  <span className={`modo-badge modo-badge--${grupo.modo ?? 'competitivo'}`}>
+                    {grupo.modo === 'colaborativo' ? 'Colaborativo' : 'Competitivo'}
+                  </span>
+                  <button
+                    onClick={() => updateGrupo(grupo.id, { activo: !grupo.activo })}
+                    className={`badge badge--btn ${grupo.activo ? 'badge--active' : 'badge--inactive'}`}
+                    title="Clic para cambiar estado"
+                  >
+                    {grupo.activo ? 'Activo' : 'Inactivo'}
+                  </button>
+                </div>
+                <div className="card__actions">
+                  <button
+                    onClick={() => setExpandido(expandido === grupo.id ? null : grupo.id)}
+                    className="btn btn--ghost btn--small"
+                  >
+                    {expandido === grupo.id ? 'Cerrar' : 'Equipos'}
+                  </button>
+                  {confirmarEliminar === grupo.id ? (
+                    <>
+                      <button
+                        onClick={() => handleEliminarGrupo(grupo.id)}
+                        className="btn btn--danger btn--small"
+                      >
+                        Confirmar
+                      </button>
+                      <button
+                        onClick={() => setConfirmarEliminar(null)}
+                        className="btn btn--ghost btn--small"
+                      >
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmarEliminar(grupo.id)}
+                      className="btn btn--ghost btn--small btn--icon"
+                      title="Eliminar grupo"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {expandido === grupo.id && (
+                <div className="card__body">
+                  <ListaEquipos
+                    grupoId={grupo.id}
+                    epocas={epocas}
+                    modoGrupo={grupo.modo ?? 'competitivo'}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={handleCrearGrupo} className="form-grupo-nuevo">
+        <div className="form__row">
+          <input
+            type="text"
+            placeholder="Nombre del grupo (ej: Salida 14 mayo)"
+            value={formGrupo.nombre}
+            onChange={e => setFormGrupo({ ...formGrupo, nombre: e.target.value })}
+            required
+          />
+          <select
+            value={formGrupo.modo}
+            onChange={e => setFormGrupo({ ...formGrupo, modo: e.target.value })}
+          >
+            <option value="competitivo">Competitivo</option>
+            <option value="colaborativo">Colaborativo</option>
+          </select>
+          <button type="submit" disabled={guardandoGrupo} className="btn btn--small">
+            {guardandoGrupo ? '...' : '+ Nuevo grupo'}
+          </button>
+        </div>
+        {formGrupo.modo === 'colaborativo' && (
+          <p className="form__help">
+            Cada equipo juega una fase distinta y luego se unen en las fases conjuntas.
+          </p>
+        )}
+      </form>
+    </div>
+  )
+}
+
+// ─── Tab Grupos ────────────────────────────────────────────────────────────
+
+function TabGrupos({ experiencias, coordinadorUid }) {
+  if (!experiencias.length) {
+    return <div className="empty-state"><p>No hay experiencias creadas.</p></div>
+  }
+
+  return (
+    <div className="grupos-todas-experiencias">
+      {experiencias.map(exp => (
+        <section key={exp.id} className="grupos-exp-seccion">
+          <div className="grupos-exp-seccion__header">
+            <h2 className="grupos-exp-seccion__titulo">{exp.nombre}</h2>
+            <span className={`badge ${exp.activa ? 'badge--active' : 'badge--inactive'}`}>
+              {exp.activa ? 'Activa' : 'Inactiva'}
+            </span>
+            <Link
+              to={`/coordinador/experiencias/${exp.id}`}
+              className="btn btn--ghost btn--small"
+            >
+              Editar
+            </Link>
+          </div>
+          <GruposDeExperiencia experiencia={exp} coordinadorUid={coordinadorUid} />
+        </section>
       ))}
     </div>
   )
 }
 
-// ─── TabExperiencias ───────────────────────────────────────────────────────
+// ─── Tab Experiencias ──────────────────────────────────────────────────────
 
 function TabExperiencias({ experiencias }) {
   return (
@@ -511,7 +756,7 @@ export default function CoordinatorHome() {
           <TabPartidas grupos={grupos} experiencias={experiencias} />
         )}
         {activeTab === 'grupos' && (
-          <TabGrupos grupos={grupos} experiencias={experiencias} />
+          <TabGrupos experiencias={experiencias} coordinadorUid={coordinador?.uid} />
         )}
         {activeTab === 'experiencias' && (
           <TabExperiencias experiencias={experiencias} />
