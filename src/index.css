@@ -1792,7 +1792,7 @@ select option { background: var(--color-surface); }
 }
 
 /* ─── Mapa: overlays ─────────────────────────────────────────────────────── */
-.tab-mapa { position: relative; }
+/* .tab-mapa ya es position:absolute via .tab-content — NO redefinir aquí */
 
 .mapa-banner-fuera {
   position: absolute;

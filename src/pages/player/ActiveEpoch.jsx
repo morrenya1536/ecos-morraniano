@@ -303,13 +303,6 @@ function TabQR({ puntos, puntosCompletados, progreso, onPuntoConfirmado }) {
             </button>
           )
         }
-        <button
-          type="button"
-          className="btn btn--ghost btn--small"
-          onClick={() => onPuntoConfirmado(pendingPunto.id)}
-        >
-          Continuar puzzle sin escanear
-        </button>
       </div>
     </div>
   )
@@ -482,7 +475,7 @@ function TabMapa({ puntos, puntosCompletados, zonaJuego }) {
       return [lat, lng]
     }
     if (pendingPunto?.lat) return [Number(pendingPunto.lat), Number(pendingPunto.lng)]
-    return [41.3825, 2.1769]
+    return [42.19513, 2.58911]
   }, []) // Solo calcular una vez al montar
 
   // Icono del jugador
@@ -644,26 +637,40 @@ function TabMapa({ puntos, puntosCompletados, zonaJuego }) {
 
       {/* GPS debug overlay */}
       <div className="mapa-debug-gps">
-        <span className="mapa-debug-gps__label">GPS </span>
-        {gpsEstado === 'activo' && posGPS && (
-          <>
-            <span className="mapa-debug-gps__ok">
-              {posGPS.lat.toFixed(5)}, {posGPS.lng.toFixed(5)}
-            </span>
-            {gpsPrecision != null && (
-              <span className="mapa-debug-gps__precision"> ±{gpsPrecision}m</span>
-            )}
-          </>
-        )}
-        {gpsEstado === 'esperando' && (
-          <span className="mapa-debug-gps__esperando">Buscando señal…</span>
-        )}
-        {gpsEstado === 'no-soporte' && (
-          <span className="mapa-debug-gps__err">No soportado</span>
-        )}
-        {gpsEstado === 'error' && (
-          <span className="mapa-debug-gps__err">{gpsError}</span>
-        )}
+        <div>
+          <span className="mapa-debug-gps__label">GPS: </span>
+          {gpsEstado === 'activo' && posGPS && (
+            <>
+              <span className="mapa-debug-gps__ok">
+                {posGPS.lat.toFixed(5)}, {posGPS.lng.toFixed(5)}
+              </span>
+              {gpsPrecision != null && (
+                <span className="mapa-debug-gps__precision"> ±{gpsPrecision}m</span>
+              )}
+            </>
+          )}
+          {gpsEstado === 'esperando' && (
+            <span className="mapa-debug-gps__esperando">Buscando señal…</span>
+          )}
+          {gpsEstado === 'no-soporte' && (
+            <span className="mapa-debug-gps__err">No soportado</span>
+          )}
+          {gpsEstado === 'error' && (
+            <span className="mapa-debug-gps__err">{gpsError}</span>
+          )}
+        </div>
+        <div>
+          <span className="mapa-debug-gps__label">Zona: </span>
+          <span className={zonaJuego.length >= 3 ? 'mapa-debug-gps__ok' : 'mapa-debug-gps__esperando'}>
+            {zonaJuego.length} puntos
+          </span>
+        </div>
+        <div>
+          <span className="mapa-debug-gps__label">Center: </span>
+          <span className="mapa-debug-gps__precision">
+            {centerInicial[0].toFixed(5)}, {centerInicial[1].toFixed(5)}
+          </span>
+        </div>
       </div>
     </div>
   )
