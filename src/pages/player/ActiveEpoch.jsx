@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
 import { Html5Qrcode } from 'html5-qrcode'
@@ -31,6 +31,17 @@ function formatTime(s) {
   return `${String(m).padStart(2, '0')}m ${String(sec).padStart(2, '0')}s`
 }
 
+function mensajeCamara(err) {
+  const msg = String(err?.message ?? err)
+  if (/NotAllowedError|PermissionDenied/i.test(msg))
+    return 'Permiso de cámara denegado. Ve a los ajustes del navegador para permitir el acceso.'
+  if (/NotFoundError|DevicesNotFound|Requested device not found/i.test(msg))
+    return 'No se encontró ninguna cámara en este dispositivo.'
+  if (/NotReadableError|TrackStart|Could not start video source/i.test(msg))
+    return 'La cámara está en uso por otra aplicación. Ciérrala e inténtalo de nuevo.'
+  return 'No se pudo acceder a la cámara. Comprueba los permisos e inténtalo de nuevo.'
+}
+
 // ─── Map auto-recenter ─────────────────────────────────────────────────────────
 function RecenterMap({ lat, lng }) {
   const map = useMap()
@@ -54,44 +65,102 @@ function EpochTimerBar({ tiempoInicioMillis, penalizacionMinutos = 0 }) {
 }
 
 // ─── Tab QR ───────────────────────────────────────────────────────────────────
-function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinutos, onScanSuccess }) {
-  const scannerRef = useRef(null)
+function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinutos, onPuntoConfirmado }) {
   const qrRef = useRef(null)
-  const [scanError, setScanError] = useState(null)
-  const [activo, setActivo] = useState(false)
+  const mountedRef = useRef(true)
+  const procesandoRef = useRef(false)
+
+  // Refs para que el callback de escaneo siempre lea los datos más recientes,
+  // aunque haya sido creado antes de una re-renderización del padre.
+  const puntosRef = useRef(puntos)
+  const completadosRef = useRef(puntosCompletados)
+  useEffect(() => { puntosRef.current = puntos }, [puntos])
+  useEffect(() => { completadosRef.current = puntosCompletados }, [puntosCompletados])
+
+  const [estado, setEstado] = useState('idle') // 'idle' | 'iniciando' | 'activo' | 'error'
+  const [errorCamara, setErrorCamara] = useState('')
+  const [mensajeScan, setMensajeScan] = useState(null) // { texto, tipo: 'error' }
+
   const pendingPunto = puntos.find(p => !puntosCompletados.includes(p.id))
   const elapsed = useElapsed(tiempoInicioMillis)
 
-  const startScanner = useCallback(async () => {
-    if (!scannerRef.current) return
-    setScanError(null)
+  // Limpieza al desmontar: libera la cámara aunque start() no haya terminado.
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      const scanner = qrRef.current
+      qrRef.current = null
+      if (scanner) scanner.stop().then(() => scanner.clear()).catch(() => {})
+    }
+  }, [])
+
+  const detener = async () => {
+    const scanner = qrRef.current
+    qrRef.current = null
+    procesandoRef.current = false
+    if (scanner) {
+      try { await scanner.stop(); scanner.clear() } catch { /* ignorar */ }
+    }
+    setEstado('idle')
+    setMensajeScan(null)
+  }
+
+  const iniciar = async () => {
+    if (qrRef.current || estado === 'iniciando') return
+    setEstado('iniciando')
+    setErrorCamara('')
+    setMensajeScan(null)
+    procesandoRef.current = false
+
     try {
-      qrRef.current = new Html5Qrcode('qr-reader')
-      await qrRef.current.start(
+      const scanner = new Html5Qrcode('qr-reader')
+      await scanner.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decoded) => {
-          qrRef.current?.stop().catch(() => {})
-          setActivo(false)
-          onScanSuccess(decoded.trim())
+          // El callback puede dispararse varias veces por segundo con el mismo QR.
+          if (procesandoRef.current) return
+          procesandoRef.current = true
+
+          const scannedId = decoded.trim()
+          const todosPuntos = puntosRef.current
+          const completados = completadosRef.current
+
+          const esDeEstaEpoca = todosPuntos.some(p => p.id === scannedId)
+          if (!esDeEstaEpoca) {
+            setMensajeScan({ texto: 'QR no reconocido. Este código no pertenece a esta época.', tipo: 'error' })
+            setTimeout(() => { setMensajeScan(null); procesandoRef.current = false }, 3000)
+            return
+          }
+
+          const puntoActual = todosPuntos.find(p => !completados.includes(p.id))
+          if (!puntoActual || scannedId !== puntoActual.id) {
+            setMensajeScan({ texto: 'Este no es el punto que buscas. Sigue explorando.', tipo: 'error' })
+            setTimeout(() => { setMensajeScan(null); procesandoRef.current = false }, 3000)
+            return
+          }
+
+          // Escaneo correcto — la navegación desmontará el componente y limpiará la cámara.
+          onPuntoConfirmado(scannedId)
         },
-        () => {}
+        () => {} // errores de decodificación por fotograma, ignorar
       )
-      setActivo(true)
-    } catch {
-      setScanError('No se pudo acceder a la cámara. Comprueba los permisos.')
-    }
-  }, [onScanSuccess])
 
-  const stopScanner = useCallback(() => {
-    qrRef.current?.stop().then(() => {
-      qrRef.current?.clear()
+      // Comprobar que el componente no se haya desmontado durante el await
+      if (!mountedRef.current) {
+        scanner.stop().catch(() => {})
+        return
+      }
+      qrRef.current = scanner
+      setEstado('activo')
+    } catch (err) {
+      if (!mountedRef.current) return
       qrRef.current = null
-    }).catch(() => {})
-    setActivo(false)
-  }, [])
-
-  useEffect(() => () => stopScanner(), [stopScanner])
+      setErrorCamara(mensajeCamara(err))
+      setEstado('error')
+    }
+  }
 
   if (!pendingPunto) {
     return (
@@ -110,12 +179,52 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
       <p className="tab-qr__hint">
         Busca el QR en la localización y escanéalo para desbloquear los puzzles.
       </p>
-      <div id="qr-reader" ref={scannerRef} className="qr-reader-box" />
-      {scanError && <p className="form__error">{scanError}</p>}
+
+      {/* html5-qrcode inyecta el vídeo aquí; debe estar siempre en el DOM */}
+      <div
+        id="qr-reader"
+        className={`qr-reader-box${estado === 'activo' ? ' qr-reader-box--activo' : ''}`}
+      />
+
+      {estado === 'activo' && (
+        <p className="qr-scan-label">
+          <span className="qr-scan-dot" /> Cámara activa — apunta al código QR
+        </p>
+      )}
+
+      {mensajeScan && (
+        <p className={`qr-scan-msg qr-scan-msg--${mensajeScan.tipo}`}>{mensajeScan.texto}</p>
+      )}
+
+      {estado === 'error' && (
+        <div className="qr-error-box">
+          <p>{errorCamara}</p>
+          {errorCamara.includes('ajustes') && (
+            <p className="qr-error-box__instrucciones">
+              iOS: Ajustes → Safari → Cámara → Permitir<br />
+              Android: toca el icono de candado en la barra de dirección → Permisos → Cámara
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="tab-qr__actions">
-        {!activo
-          ? <button onClick={startScanner} className="btn btn--primary">Activar cámara</button>
-          : <button onClick={stopScanner} className="btn btn--ghost">Detener</button>
+        {estado === 'activo'
+          ? (
+            <button type="button" onClick={detener} className="btn btn--ghost">
+              Detener cámara
+            </button>
+          )
+          : (
+            <button
+              type="button"
+              onClick={iniciar}
+              disabled={estado === 'iniciando'}
+              className="btn btn--primary"
+            >
+              {estado === 'iniciando' ? 'Activando...' : 'Activar cámara'}
+            </button>
+          )
         }
       </div>
     </div>
@@ -229,7 +338,6 @@ function TabAyuda({ puntos, puntosCompletados, puzzlesCompletados, progreso, epo
     })
   }, [pendingPunto?.id, epocaId, experienciaId])
 
-  // ── No hay puntos completados ni en curso → aún no han llegado al primero
   const sinProgreso = !progreso ||
     ((progreso.puntosCompletados ?? []).length === 0 &&
      (progreso.puzzlesCompletados ?? []).length === 0)
@@ -250,7 +358,6 @@ function TabAyuda({ puntos, puntosCompletados, puzzlesCompletados, progreso, epo
     )
   }
 
-  // Puzzle activo = primer puzzle del punto pendiente no completado aún
   const puzzleActual = puzzles.find(pz => !puzzlesCompletados.includes(pz.id))
   const tieneAyudas = puzzleActual && (puzzleActual.ayuda1 || puzzleActual.ayuda2 || puzzleActual.ayuda3)
   const ayudasUsadas = progreso?.ayudasUsadas ?? {}
@@ -397,7 +504,6 @@ export default function ActiveEpoch() {
   const [activeTab, setActiveTab] = useState('pistas')
   const [puntos, setPuntos] = useState([])
   const [progreso, setProgreso] = useState(null)
-  const [scanError, setScanError] = useState(null)
 
   useEffect(() => {
     if (!game.experienciaId || !epocaId) return
@@ -423,22 +529,13 @@ export default function ActiveEpoch() {
   useEffect(() => {
     if (!progreso || puntos.length === 0) return
     const completados = progreso.puntosCompletados ?? []
-    if (puntos.length > 0 && puntos.every(p => completados.includes(p.id))) {
+    if (puntos.every(p => completados.includes(p.id))) {
       navigate(`/jugador/epoca/${epocaId}/completada`, { replace: true })
     }
   }, [progreso, puntos, epocaId, navigate])
 
-  const handleScan = (scannedId) => {
-    setScanError(null)
-    const completados = progreso?.puntosCompletados ?? []
-    const pendingPunto = puntos.find(p => !completados.includes(p.id))
-    if (!pendingPunto) return
-    if (scannedId === pendingPunto.id) {
-      navigate(`/jugador/puzzle/${epocaId}/${pendingPunto.id}`)
-    } else {
-      setScanError('QR incorrecto. Sigue buscando el punto correcto.')
-      setTimeout(() => setScanError(null), 4000)
-    }
+  const handlePuntoConfirmado = (puntoId) => {
+    navigate(`/jugador/puzzle/${epocaId}/${puntoId}`)
   }
 
   const puntosCompletados = progreso?.puntosCompletados ?? []
@@ -447,12 +544,6 @@ export default function ActiveEpoch() {
 
   return (
     <div className="active-epoch">
-      {scanError && (
-        <div className="scan-error-banner" onClick={() => setScanError(null)}>
-          {scanError}
-        </div>
-      )}
-
       <div className="active-epoch__content">
         {activeTab === 'qr' && (
           <TabQR
@@ -460,7 +551,7 @@ export default function ActiveEpoch() {
             puntosCompletados={puntosCompletados}
             tiempoInicioMillis={inicioMillis}
             penalizacionMinutos={progreso?.penalizacionMinutos ?? 0}
-            onScanSuccess={handleScan}
+            onPuntoConfirmado={handlePuntoConfirmado}
           />
         )}
         {activeTab === 'pistas' && (

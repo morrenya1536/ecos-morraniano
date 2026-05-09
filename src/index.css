@@ -1012,6 +1012,66 @@ select option { background: var(--color-surface); }
 
 .tab-qr__actions { display: flex; gap: var(--gap); justify-content: center; }
 
+@keyframes scan-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.5); }
+  50%       { box-shadow: 0 0 0 8px rgba(76, 175, 80, 0); }
+}
+@keyframes dot-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}
+
+.qr-reader-box--activo {
+  border-color: #4caf50;
+  animation: scan-pulse 1.5s ease-in-out infinite;
+}
+
+.qr-scan-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: #4caf50;
+}
+
+.qr-scan-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4caf50;
+  flex-shrink: 0;
+  animation: dot-blink 1s ease-in-out infinite;
+}
+
+.qr-scan-msg {
+  text-align: center;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 320px;
+}
+.qr-scan-msg--error { color: var(--color-error); background: rgba(233, 69, 96, 0.1); }
+
+.qr-error-box {
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--color-error);
+  background: rgba(233, 69, 96, 0.1);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  width: 100%;
+  max-width: 320px;
+}
+.qr-error-box__instrucciones {
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
 /* ─── Tab Pistas ─────────────────────────────────────────────────────────── */
 .tab-pistas {
   display: flex;
