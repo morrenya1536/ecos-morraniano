@@ -1611,6 +1611,7 @@ select option { background: var(--color-surface); }
 .ranking-item--pos-2 { border-left-color: #c0c0c0; }
 .ranking-item--pos-3 { border-left-color: #cd7f32; }
 .ranking-item--yo { background: rgba(233, 69, 96, 0.1); border-color: var(--color-accent); }
+.ranking-item--en-curso { opacity: 0.55; }
 
 .ranking-item__pos {
   font-size: 0.8rem;

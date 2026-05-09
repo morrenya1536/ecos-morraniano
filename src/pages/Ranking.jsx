@@ -12,21 +12,24 @@ function formatTime(s) {
 }
 
 export default function Ranking() {
-  const { experienciaId } = useParams()
+  const { experienciaId, grupoId } = useParams()
   const [entradas, setEntradas] = useState([])
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
-    if (!experienciaId) return
-    return subscribeRanking(experienciaId, snap => {
+    if (!experienciaId || !grupoId) { setCargando(false); return }
+    return subscribeRanking(experienciaId, grupoId, snap => {
       setEntradas(
         snap.docs
           .map(d => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => (a.tiempo ?? Infinity) - (b.tiempo ?? Infinity))
+          .sort((a, b) => {
+            if (a.tiempo !== b.tiempo) return (a.tiempo ?? Infinity) - (b.tiempo ?? Infinity)
+            return (a.fecha?.toMillis?.() ?? 0) - (b.fecha?.toMillis?.() ?? 0)
+          })
       )
       setCargando(false)
     })
-  }, [experienciaId])
+  }, [experienciaId, grupoId])
 
   return (
     <main className="page page--dark ranking-page">
@@ -35,7 +38,11 @@ export default function Ranking() {
       </header>
 
       <section className="page__content">
-        {cargando ? (
+        {!grupoId ? (
+          <div className="empty-state">
+            <p>Indica el código de grupo para ver el ranking.</p>
+          </div>
+        ) : cargando ? (
           <div className="loading-screen"><div className="spinner" /></div>
         ) : entradas.length === 0 ? (
           <div className="empty-state">

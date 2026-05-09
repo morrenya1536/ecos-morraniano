@@ -50,13 +50,16 @@ export default function EpochComplete() {
   const [epoca, setEpoca] = useState(null)
   const [progreso, setProgreso] = useState(null)
   const [epocas, setEpocas] = useState([])
-  const [otrosEquipos, setOtrosEquipos] = useState([])
+  const [todosEquipos, setTodosEquipos] = useState([])
   const [tiempoSegundos, setTiempoSegundos] = useState(null)
   const [listo, setListo] = useState(false)
 
   // Collaborative waiting state
   const [otrosProgreso, setOtrosProgreso] = useState({})
   const [rankingData, setRankingData] = useState([])
+
+  const isCompetitivo = game.grupoModo === 'competitivo' || !game.grupoModo
+  const otrosEquipos = todosEquipos.filter(e => e.id !== game.equipoId)
 
   const equipoIdProgreso = game.grupoModo === 'colaborativo' && game.epocaConjunta
     ? 'conjunto'
@@ -106,19 +109,15 @@ export default function EpochComplete() {
     })
   }, [game.experienciaId])
 
-  // Subscribe to other teams
+  // Subscribe to all teams in this group
   useEffect(() => {
     if (!game.grupoId) return
     return subscribeEquipos(game.grupoId, snap => {
-      setOtrosEquipos(
-        snap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .filter(e => e.id !== game.equipoId)
-      )
+      setTodosEquipos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     })
-  }, [game.grupoId, game.equipoId])
+  }, [game.grupoId])
 
-  // Subscribe to other teams' progreso for this epoch (collaborative waiting)
+  // Subscribe to other teams' progreso for collaborative waiting
   useEffect(() => {
     if (game.grupoModo !== 'colaborativo' || !game.grupoId || otrosEquipos.length === 0) return
     const unsubs = otrosEquipos.map(eq => {
@@ -134,18 +133,15 @@ export default function EpochComplete() {
     return () => unsubs.forEach(u => u())
   }, [game.grupoModo, game.grupoId, otrosEquipos])
 
-  // Write ranking for competitive final epoch
   const currentIdx = epocas.findIndex(e => e.id === epocaId)
   const isLast = listo && currentIdx === epocas.length - 1 && epocas.length > 0
   const nextEpoca = epocas[currentIdx + 1] ?? null
-  const isCompetitivo = game.grupoModo === 'competitivo' || !game.grupoModo
 
+  // Write ranking for competitive final epoch
   useEffect(() => {
     if (!isLast || !isCompetitivo || !listo || tiempoSegundos === null) return
     if (!game.grupoId || !game.equipoId || !game.experienciaId) return
-    writeRanking({
-      grupoId: game.grupoId,
-      equipoId: game.equipoId,
+    writeRanking(game.experienciaId, game.grupoId, game.equipoId, {
       equipoNombre: game.equipoNombre,
       experienciaId: game.experienciaId,
       tiempo: tiempoSegundos,
@@ -153,17 +149,20 @@ export default function EpochComplete() {
     }).catch(() => {})
   }, [isLast, isCompetitivo, listo, tiempoSegundos])
 
-  // Subscribe to ranking when competitive + last epoch
+  // Subscribe to ranking (competitive last epoch)
   useEffect(() => {
-    if (!isLast || !isCompetitivo || !game.experienciaId) return
-    return subscribeRanking(game.experienciaId, snap => {
+    if (!isLast || !isCompetitivo || !game.experienciaId || !game.grupoId) return
+    return subscribeRanking(game.experienciaId, game.grupoId, snap => {
       setRankingData(
         snap.docs
           .map(d => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => (a.tiempo ?? Infinity) - (b.tiempo ?? Infinity))
+          .sort((a, b) => {
+            if (a.tiempo !== b.tiempo) return (a.tiempo ?? Infinity) - (b.tiempo ?? Infinity)
+            return (a.fecha?.toMillis?.() ?? 0) - (b.fecha?.toMillis?.() ?? 0)
+          })
       )
     })
-  }, [isLast, isCompetitivo, game.experienciaId])
+  }, [isLast, isCompetitivo, game.experienciaId, game.grupoId])
 
   // Collaborative: are all other teams done with their individual phases?
   const todasFasesCompletadas = game.grupoModo === 'colaborativo' &&
@@ -180,13 +179,20 @@ export default function EpochComplete() {
 
   const desenlace = epoca?.desenlace
 
-  // Collaborative non-joint: show waiting screen if other teams aren't done
   const mostrarEsperaColaborativa = game.grupoModo === 'colaborativo' &&
     !game.epocaConjunta &&
     !todasFasesCompletadas &&
     listo
 
-  const myPosition = rankingData.findIndex(r => r.equipoId === game.equipoId) + 1
+  // Build full ranking list merging finished teams + in-progress teams
+  const rankingMap = Object.fromEntries(rankingData.map(r => [r.equipoId, r]))
+  const rankingCompleto = [
+    ...rankingData,
+    ...todosEquipos
+      .filter(eq => !(eq.id in rankingMap))
+      .map(eq => ({ equipoId: eq.id, equipoNombre: eq.nombre, enCurso: true })),
+  ]
+  const myPosition = rankingCompleto.findIndex(r => r.equipoId === game.equipoId && !r.enCurso) + 1
 
   return (
     <div className="page page--dark epoch-complete">
@@ -243,29 +249,33 @@ export default function EpochComplete() {
         )}
       </div>
 
-      {/* Competitive: ranking position + leaderboard */}
-      {isLast && isCompetitivo && rankingData.length > 0 && (
+      {/* Competitivo: clasificación del grupo */}
+      {isLast && isCompetitivo && rankingCompleto.length > 0 && (
         <div className="epoch-complete__ranking">
           {myPosition > 0 && (
             <p className="epoch-complete__ranking-pos">
               Tu posición: <strong>#{myPosition}</strong>
             </p>
           )}
-          <p className="tab-section-title">Clasificación</p>
-          {rankingData.map((r, i) => (
+          <p className="tab-section-title">Clasificación del grupo</p>
+          {rankingCompleto.map((r, i) => (
             <div
-              key={r.id}
-              className={`ranking-item ${r.equipoId === game.equipoId ? 'ranking-item--yo' : ''}`}
+              key={r.equipoId}
+              className={`ranking-item${r.equipoId === game.equipoId ? ' ranking-item--yo' : ''}${r.enCurso ? ' ranking-item--en-curso' : ` ranking-item--pos-${i + 1}`}`}
             >
-              <span className="ranking-item__pos">#{i + 1}</span>
-              <span className="ranking-item__nombre">{r.equipoNombre}</span>
-              <span className="ranking-item__tiempo">{formatTime(r.tiempo)}</span>
+              <span className="ranking-item__pos">{r.enCurso ? '—' : `#${i + 1}`}</span>
+              <div className="ranking-item__info">
+                <span className="ranking-item__nombre">{r.equipoNombre}</span>
+              </div>
+              <span className="ranking-item__tiempo">
+                {r.enCurso ? 'En curso...' : formatTime(r.tiempo)}
+              </span>
             </div>
           ))}
         </div>
       )}
 
-      {/* Collaborative: other teams status */}
+      {/* Colaborativo: estado de otros equipos en su fase */}
       {game.grupoModo === 'colaborativo' && otrosEquipos.length > 0 && (
         <div className="epoch-complete__otros">
           <p className="tab-section-title">Otros equipos</p>
@@ -280,8 +290,8 @@ export default function EpochComplete() {
         </div>
       )}
 
-      {/* Competitive: other teams in same epoch */}
-      {isCompetitivo && otrosEquipos.length > 0 && (
+      {/* Competitivo: estado de otros equipos en la misma fase */}
+      {isCompetitivo && otrosEquipos.length > 0 && !isLast && (
         <div className="epoch-complete__otros">
           <p className="tab-section-title">Otros equipos</p>
           {otrosEquipos.map(eq => (

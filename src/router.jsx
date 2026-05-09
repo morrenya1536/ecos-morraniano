@@ -57,6 +57,7 @@ export const router = createBrowserRouter([
   },
 
   // ── Público ────────────────────────────────────────────────────────────
+  { path: '/ranking/:experienciaId/:grupoId', element: <Ranking /> },
   { path: '/ranking/:experienciaId', element: <Ranking /> },
   { path: '/qr-test', element: <QRTest /> },
   { path: '*', element: <NotFound /> },

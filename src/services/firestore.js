@@ -186,6 +186,11 @@ export const marcarPuzzleCompletado = (grupoId, equipoId, epocaId, puzzleId) =>
     puzzlesCompletados: arrayUnion(puzzleId),
   })
 
+export const marcarPuntoEscaneado = (grupoId, equipoId, epocaId, puntoId) =>
+  updateDoc(progresoDoc(grupoId, equipoId, epocaId), {
+    puntosEscaneados: arrayUnion(puntoId),
+  })
+
 export const registrarAyuda = (grupoId, equipoId, epocaId, puzzleId, nivel, penalizacion) => {
   const updates = { [`ayudasUsadas.${puzzleId}`]: nivel }
   if (penalizacion > 0) updates.penalizacionMinutos = increment(penalizacion)
@@ -258,24 +263,16 @@ export const subscribeFaseConjunta = (grupoId, epocaId, callback) =>
   onSnapshot(doc(db, 'grupos', grupoId, 'fasesConjuntas', epocaId), callback)
 
 // ─── Ranking ───────────────────────────────────────────────────────────────
-export const writeRanking = (data) =>
-  addDoc(collection(db, 'rankings'), { ...data, fecha: serverTimestamp() })
+// Ruta: ranking/{experienciaId}/grupos/{grupoId}/equipos/{equipoId}
+// Cada equipo tiene un único documento identificado por su equipoId.
+export const writeRanking = (experienciaId, grupoId, equipoId, data) =>
+  setDoc(
+    doc(db, 'ranking', experienciaId, 'grupos', grupoId, 'equipos', equipoId),
+    { ...data, equipoId, grupoId, modo: 'competitivo', fecha: serverTimestamp() }
+  )
 
-export const getRanking = (experienciaId) =>
-  getDocs(query(
-    collection(db, 'rankings'),
-    where('experienciaId', '==', experienciaId),
-    orderBy('puntuacion', 'desc'),
-    orderBy('tiempo', 'asc')
-  ))
-
-export const subscribeRanking = (experienciaId, callback) =>
+export const subscribeRanking = (experienciaId, grupoId, callback) =>
   onSnapshot(
-    query(
-      collection(db, 'rankings'),
-      where('experienciaId', '==', experienciaId),
-      orderBy('puntuacion', 'desc'),
-      orderBy('tiempo', 'asc')
-    ),
+    collection(db, 'ranking', experienciaId, 'grupos', grupoId, 'equipos'),
     callback
   )

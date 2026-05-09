@@ -13,6 +13,7 @@ import {
   registrarAyuda,
   pausarEpoca,
   reanudarEpoca,
+  marcarPuntoEscaneado,
 } from '../../services/firestore'
 import { getDocs, collection } from 'firebase/firestore'
 import { db } from '../../services/firebase'
@@ -284,16 +285,19 @@ function TabQR({ puntos, puntosCompletados, progreso, onPuntoConfirmado }) {
 }
 
 // ─── Tab Pistas ───────────────────────────────────────────────────────────────
-function TabPistas({ puntos, puntosCompletados, puzzlesCompletados, experienciaId, epocaId, onPuntoConfirmado }) {
+function TabPistas({ puntos, puntosCompletados, puntosEscaneados, puzzlesCompletados, experienciaId, epocaId, onPuntoConfirmado }) {
   const [puntoPuzzles, setPuntoPuzzles] = useState({})
   const loadedRef = useRef(new Set())
   const completadosSet = new Set(puzzlesCompletados)
+  const escaneadosSet = new Set(puntosEscaneados)
   const pendingPunto = puntos.find(p => !puntosCompletados.includes(p.id))
 
   useEffect(() => {
     if (!experienciaId || !epocaId) return
+    // Cargar puzzles de puntos completados y del punto escaneado activo
     puntos.forEach(p => {
-      if (!puntosCompletados.includes(p.id) && p.id !== pendingPunto?.id) return
+      const mostrar = puntosCompletados.includes(p.id) || escaneadosSet.has(p.id)
+      if (!mostrar) return
       if (loadedRef.current.has(p.id)) return
       loadedRef.current.add(p.id)
       getDocs(collection(db, 'experiencias', experienciaId, 'epocas', epocaId, 'puntos', p.id, 'puzzles'))
@@ -304,7 +308,7 @@ function TabPistas({ puntos, puntosCompletados, puzzlesCompletados, experienciaI
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)),
         })))
     })
-  }, [puntos, puntosCompletados, pendingPunto?.id, experienciaId, epocaId])
+  }, [puntos, puntosCompletados, puntosEscaneados, pendingPunto?.id, experienciaId, epocaId])
 
   const displayPuntos = puntos.filter(p => puntosCompletados.includes(p.id) || p.id === pendingPunto?.id)
 
@@ -315,6 +319,7 @@ function TabPistas({ puntos, puntosCompletados, puzzlesCompletados, experienciaI
       )}
       {displayPuntos.map(p => {
         const isDone = puntosCompletados.includes(p.id)
+        const escaneado = escaneadosSet.has(p.id)
         const puzzles = puntoPuzzles[p.id] ?? []
         const firstActiveIdx = !isDone ? puzzles.findIndex(pz => !completadosSet.has(pz.id)) : -1
         const hasStarted = !isDone && puzzles.some(pz => completadosSet.has(pz.id))
@@ -333,7 +338,8 @@ function TabPistas({ puntos, puntosCompletados, puzzlesCompletados, experienciaI
             {p.pistaEntrada?.texto && (
               <p className="pista-card__texto">{p.pistaEntrada.texto}</p>
             )}
-            {puzzles.length > 0 && (
+            {/* Puzzles: solo visibles tras escanear el QR del punto */}
+            {(isDone || escaneado) && puzzles.length > 0 && (
               <div className="pista-card__puzzles">
                 {puzzles.map((pz, idx) => {
                   const pzDone = completadosSet.has(pz.id)
@@ -352,7 +358,8 @@ function TabPistas({ puntos, puntosCompletados, puzzlesCompletados, experienciaI
                 })}
               </div>
             )}
-            {!isDone && (
+            {/* Botón solo si ya escaneado y hay puzzles pendientes */}
+            {!isDone && escaneado && (
               <button
                 className="btn btn--primary btn--small"
                 style={{ marginTop: 'var(--gap)' }}
@@ -633,6 +640,10 @@ export default function ActiveEpoch() {
   }, [progreso, puntos, epocaId, navigate])
 
   const handlePuntoConfirmado = (puntoId) => {
+    // Marcar como escaneado (fire-and-forget, idempotente)
+    if (game.grupoId && equipoIdProgreso) {
+      marcarPuntoEscaneado(game.grupoId, equipoIdProgreso, epocaId, puntoId)
+    }
     navigate(`/jugador/puzzle/${epocaId}/${puntoId}`)
   }
 
@@ -646,6 +657,7 @@ export default function ActiveEpoch() {
   }
 
   const puntosCompletados = progreso?.puntosCompletados ?? []
+  const puntosEscaneados = progreso?.puntosEscaneados ?? []
   const puzzlesCompletados = progreso?.puzzlesCompletados ?? []
 
   return (
@@ -661,6 +673,7 @@ export default function ActiveEpoch() {
           <TabPistas
             puntos={puntos}
             puntosCompletados={puntosCompletados}
+            puntosEscaneados={puntosEscaneados}
             puzzlesCompletados={puzzlesCompletados}
             experienciaId={game.experienciaId}
             epocaId={epocaId}
