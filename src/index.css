@@ -1774,6 +1774,9 @@ select option { background: var(--color-surface); }
   gap: 8px;
   padding-top: 4px;
 }
+.partidas-cargando {
+  padding: 6px 0;
+}
 
 /* ─── GrupoCard colapsable ───────────────────────────────────────────────── */
 .partida-card__toggle {

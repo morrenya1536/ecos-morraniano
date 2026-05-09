@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useCoordinator } from '../../hooks/useCoordinator'
@@ -43,6 +43,8 @@ function useElapsedCoord(progreso) {
   return elapsed
 }
 
+// ─── EquipoRow — fila de equipo con estado en tiempo real ─────────────────
+
 function EquipoRow({ grupoId, equipo, modoGrupo }) {
   const [progreso, setProgreso] = useState(undefined)
   const [epocaActivaId, setEpocaActivaId] = useState(null)
@@ -51,11 +53,7 @@ function EquipoRow({ grupoId, equipo, modoGrupo }) {
   const [reseteando, setReseteando] = useState(false)
 
   useEffect(() => {
-    if (!grupoId || !equipo.id) {
-      setProgreso(null)
-      return
-    }
-
+    if (!grupoId || !equipo.id) { setProgreso(null); return }
     const epocaAsignada = equipo.epocaAsignadaId || null
 
     if (modoGrupo === 'colaborativo' && epocaAsignada) {
@@ -66,11 +64,7 @@ function EquipoRow({ grupoId, equipo, modoGrupo }) {
     }
 
     return subscribeProgreso(grupoId, equipo.id, snap => {
-      if (snap.empty) {
-        setEpocaActivaId(null)
-        setProgreso(null)
-        return
-      }
+      if (snap.empty) { setEpocaActivaId(null); setProgreso(null); return }
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       const vivo = docs.find(d => d.estado === 'activo' || d.estado === 'pausado')
       const ref = vivo ?? [...docs].sort(
@@ -137,15 +131,17 @@ function EquipoRow({ grupoId, equipo, modoGrupo }) {
   )
 }
 
-// ─── GrupoCardPartidas ─────────────────────────────────────────────────────
-// Collapsible card that computes group estado for section placement.
+// ─── GrupoEstadoTracker — worker sin UI, siempre montado ──────────────────
+// Suscribe a equipos + progreso + épocas y calcula el estado del grupo.
+// Solo notifica al padre cuando todos los datos están cargados (nunca durante la carga).
 
-function GrupoCardPartidas({ grupo, onEstadoChange }) {
+function GrupoEstadoTracker({ grupo, onEstadoChange }) {
   const modoGrupo = grupo.modo ?? 'competitivo'
-  const [equipos, setEquipos] = useState([])
+
+  // null = todavía no ha llegado la suscripción; [] = llegó vacío; [...] = datos reales
+  const [equipos, setEquipos] = useState(null)
   const [epocas, setEpocas] = useState(null)
   const [progresoPorEquipo, setProgresoPorEquipo] = useState({})
-  const [abierto, setAbierto] = useState(false)
 
   useEffect(() =>
     subscribeEquipos(grupo.id, snap => {
@@ -160,10 +156,10 @@ function GrupoCardPartidas({ grupo, onEstadoChange }) {
       .catch(() => setEpocas([]))
   }, [grupo.experienciaId])
 
-  // Rebuild progreso subscriptions whenever the set of equipo IDs changes
-  const equipoIdsKey = equipos.map(e => e.id).sort().join(',')
+  // Reconstruir suscripciones de progreso cuando cambia la lista de equipos
+  const equipoIdsKey = (equipos ?? []).map(e => e.id).sort().join(',')
   useEffect(() => {
-    if (!equipos.length) return
+    if (!equipos || !equipos.length) return
     const cancelFns = equipos.map(eq =>
       subscribeProgreso(grupo.id, eq.id, snap => {
         setProgresoPorEquipo(prev => ({
@@ -175,38 +171,67 @@ function GrupoCardPartidas({ grupo, onEstadoChange }) {
     return () => cancelFns.forEach(c => c())
   }, [grupo.id, equipoIdsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const estadoGrupo = useMemo(() => {
-    if (!equipos.length || epocas === null) return 'pendiente'
+  // Solo calcular y notificar cuando TODOS los datos han llegado de Firestore
+  useEffect(() => {
+    if (equipos === null || epocas === null) return
+
     const todosCargados = equipos.every(eq => eq.id in progresoPorEquipo)
-    if (!todosCargados) return 'pendiente'
+    if (!todosCargados) return
 
-    const conProgreso = equipos.filter(eq => (progresoPorEquipo[eq.id] ?? []).length > 0)
-    if (!conProgreso.length) return 'pendiente'
-
-    if (modoGrupo === 'colaborativo') {
-      const epocasNormales = epocas.filter(e => !e.esConjunta)
-      if (!epocasNormales.length) return 'en-curso'
-      const finalizado = epocasNormales.every(epoca =>
-        equipos.some(eq =>
-          (progresoPorEquipo[eq.id] ?? []).some(p => p.id === epoca.id && p.estado === 'completado')
-        )
-      )
-      return finalizado ? 'finalizado' : 'en-curso'
+    let estado
+    if (!equipos.length) {
+      estado = 'pendiente'
+    } else {
+      const conProgreso = equipos.filter(eq => (progresoPorEquipo[eq.id] ?? []).length > 0)
+      if (!conProgreso.length) {
+        estado = 'pendiente'
+      } else if (modoGrupo === 'colaborativo') {
+        const epocasNormales = epocas.filter(e => !e.esConjunta)
+        if (!epocasNormales.length) {
+          estado = 'en-curso'
+        } else {
+          const finalizado = epocasNormales.every(epoca =>
+            equipos.some(eq =>
+              (progresoPorEquipo[eq.id] ?? []).some(p => p.id === epoca.id && p.estado === 'completado')
+            )
+          )
+          estado = finalizado ? 'finalizado' : 'en-curso'
+        }
+      } else {
+        // Competitivo: todos los equipos completaron todas las épocas
+        if (!epocas.length) {
+          estado = 'en-curso'
+        } else {
+          const finalizado = equipos.every(eq =>
+            epocas.every(epoca =>
+              (progresoPorEquipo[eq.id] ?? []).some(p => p.id === epoca.id && p.estado === 'completado')
+            )
+          )
+          estado = finalizado ? 'finalizado' : 'en-curso'
+        }
+      }
     }
 
-    // Competitivo: todos los equipos completaron todas las épocas
-    if (!epocas.length) return 'en-curso'
-    const finalizado = equipos.every(eq =>
-      epocas.every(epoca =>
-        (progresoPorEquipo[eq.id] ?? []).some(p => p.id === epoca.id && p.estado === 'completado')
-      )
-    )
-    return finalizado ? 'finalizado' : 'en-curso'
-  }, [equipos, epocas, progresoPorEquipo, modoGrupo])
+    onEstadoChange(grupo.id, estado)
+  }, [equipos, epocas, progresoPorEquipo, modoGrupo, grupo.id, onEstadoChange])
 
-  useEffect(() => {
-    onEstadoChange(grupo.id, estadoGrupo)
-  }, [grupo.id, estadoGrupo, onEstadoChange])
+  return null
+}
+
+// ─── GrupoCardDisplay — tarjeta colapsable visible ────────────────────────
+// Solo gestiona la visualización. No tiene efecto sobre el estado de clasificación
+// del grupo, por lo que puede montarse/desmontarse libremente.
+
+function GrupoCardDisplay({ grupo }) {
+  const modoGrupo = grupo.modo ?? 'competitivo'
+  const [equipos, setEquipos] = useState([])
+  const [abierto, setAbierto] = useState(false)
+
+  useEffect(() =>
+    subscribeEquipos(grupo.id, snap => {
+      setEquipos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    }),
+  [grupo.id])
 
   return (
     <div className="partida-card">
@@ -248,6 +273,8 @@ const SECCIONES_PARTIDAS = [
 ]
 
 function TabPartidas({ grupos, experiencias }) {
+  // Solo contiene estados YA CONFIRMADOS (nunca 'loading').
+  // Los trackers están siempre montados y actualizan este mapa cuando tienen datos completos.
   const [estadosGrupo, setEstadosGrupo] = useState({})
   const [seccionesAbiertas, setSeccionesAbiertas] = useState({
     'en-curso': true,
@@ -255,6 +282,7 @@ function TabPartidas({ grupos, experiencias }) {
     finalizado: false,
   })
 
+  // Ignora el 'loading' inicial — solo acepta estados reales confirmados
   const handleEstadoChange = useCallback((grupoId, estado) => {
     setEstadosGrupo(prev => {
       if (prev[grupoId] === estado) return prev
@@ -274,22 +302,30 @@ function TabPartidas({ grupos, experiencias }) {
   const gruposPorEstado = useMemo(() => {
     const map = { 'en-curso': [], pendiente: [], finalizado: [] }
     gruposActivos.forEach(g => {
-      const estado = estadosGrupo[g.id] ?? 'pendiente'
-      map[estado].push(g)
+      const estado = estadosGrupo[g.id]
+      if (estado) map[estado].push(g)
     })
     return map
   }, [gruposActivos, estadosGrupo])
 
+  const nSinClasificar = gruposActivos.filter(g => !estadosGrupo[g.id]).length
+
   if (!gruposActivos.length) {
-    return (
-      <div className="empty-state">
-        <p>No hay partidas activas.</p>
-      </div>
-    )
+    return <div className="empty-state"><p>No hay partidas activas.</p></div>
   }
 
   return (
     <div className="partidas-secciones">
+      {/* Trackers siempre montados — nulo en el DOM, calculan estado sin UI */}
+      {gruposActivos.map(g => (
+        <GrupoEstadoTracker key={g.id} grupo={g} onEstadoChange={handleEstadoChange} />
+      ))}
+
+      {/* Indicador mientras los trackers clasifican los grupos */}
+      {nSinClasificar > 0 && (
+        <p className="partidas-cargando text-muted text-small">Cargando partidas…</p>
+      )}
+
       {SECCIONES_PARTIDAS.map(({ key, label }) => {
         const lista = gruposPorEstado[key]
         if (!lista.length) return null
@@ -306,7 +342,7 @@ function TabPartidas({ grupos, experiencias }) {
             {seccionesAbiertas[key] && (
               <div className="partidas-seccion__body">
                 {lista.map(g => (
-                  <GrupoCardPartidas key={g.id} grupo={g} onEstadoChange={handleEstadoChange} />
+                  <GrupoCardDisplay key={g.id} grupo={g} />
                 ))}
               </div>
             )}
