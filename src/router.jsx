@@ -12,6 +12,7 @@ import ActiveEpoch from './pages/player/ActiveEpoch'
 import PuzzleScreen from './pages/player/PuzzleScreen'
 import EpochComplete from './pages/player/EpochComplete'
 import Ranking from './pages/Ranking'
+import QRTest from './pages/QRTest'
 import NotFound from './pages/NotFound'
 
 export const router = createBrowserRouter([
@@ -57,5 +58,6 @@ export const router = createBrowserRouter([
 
   // ── Público ────────────────────────────────────────────────────────────
   { path: '/ranking/:experienciaId', element: <Ranking /> },
+  { path: '/qr-test', element: <QRTest /> },
   { path: '*', element: <NotFound /> },
 ])
