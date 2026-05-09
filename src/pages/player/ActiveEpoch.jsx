@@ -208,16 +208,18 @@ function TabMapa({ puntos, puntosCompletados }) {
 }
 
 // ─── Tab Ayuda ────────────────────────────────────────────────────────────────
-function TabAyuda({ puntos, puntosCompletados, progreso, epocaId, grupoId, equipoId }) {
+function TabAyuda({ puntos, puntosCompletados, puzzlesCompletados, progreso, epocaId, experienciaId, grupoId, equipoId }) {
   const pendingPunto = puntos.find(p => !puntosCompletados.includes(p.id))
   const [puzzles, setPuzzles] = useState([])
   const [mostradas, setMostradas] = useState({})
   const [confirmar, setConfirmar] = useState(null)
 
+  // Reload puzzles when the pending punto changes
   useEffect(() => {
-    if (!pendingPunto || !progreso?.experienciaId) return
+    if (!pendingPunto || !experienciaId) return
+    setPuzzles([])
     getDocs(
-      collection(db, 'experiencias', progreso.experienciaId, 'epocas', epocaId, 'puntos', pendingPunto.id, 'puzzles')
+      collection(db, 'experiencias', experienciaId, 'epocas', epocaId, 'puntos', pendingPunto.id, 'puzzles')
     ).then(snap => {
       setPuzzles(
         snap.docs
@@ -225,7 +227,12 @@ function TabAyuda({ puntos, puntosCompletados, progreso, epocaId, grupoId, equip
           .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
       )
     })
-  }, [pendingPunto?.id, epocaId, progreso?.experienciaId])
+  }, [pendingPunto?.id, epocaId, experienciaId])
+
+  // ── No hay puntos completados ni en curso → aún no han llegado al primero
+  const sinProgreso = !progreso ||
+    ((progreso.puntosCompletados ?? []).length === 0 &&
+     (progreso.puzzlesCompletados ?? []).length === 0)
 
   if (!pendingPunto) {
     return (
@@ -235,6 +242,17 @@ function TabAyuda({ puntos, puntosCompletados, progreso, epocaId, grupoId, equip
     )
   }
 
+  if (sinProgreso) {
+    return (
+      <div className="tab-content tab-content--center">
+        <p className="text-muted text-center">Dirígete al primer punto para comenzar.</p>
+      </div>
+    )
+  }
+
+  // Puzzle activo = primer puzzle del punto pendiente no completado aún
+  const puzzleActual = puzzles.find(pz => !puzzlesCompletados.includes(pz.id))
+  const tieneAyudas = puzzleActual && (puzzleActual.ayuda1 || puzzleActual.ayuda2 || puzzleActual.ayuda3)
   const ayudasUsadas = progreso?.ayudasUsadas ?? {}
 
   const revelar = async (puzzleId, nivel, penalizacion) => {
@@ -268,20 +286,31 @@ function TabAyuda({ puntos, puntosCompletados, progreso, epocaId, grupoId, equip
 
       <p className="tab-section-title">{pendingPunto.nombre}</p>
 
-      {puzzles.length === 0 && (
+      {!puzzleActual && puzzles.length > 0 && (
         <p className="text-muted text-center" style={{ marginTop: '2rem' }}>
-          Primero escanea el QR del punto para desbloquear las ayudas.
+          Todos los puzzles de este punto están resueltos.
         </p>
       )}
 
-      {puzzles.map((pz, idx) => {
+      {!puzzleActual && puzzles.length === 0 && (
+        <p className="text-muted text-center" style={{ marginTop: '2rem' }}>
+          Cargando...
+        </p>
+      )}
+
+      {puzzleActual && !tieneAyudas && (
+        <p className="text-muted text-center" style={{ marginTop: '2rem' }}>
+          No hay ayudas disponibles para esta prueba.
+        </p>
+      )}
+
+      {puzzleActual && tieneAyudas && (() => {
+        const pz = puzzleActual
         const nivelMostrado = Math.max(mostradas[pz.id] ?? 0, ayudasUsadas[pz.id] ?? 0)
-        const tieneAyudas = pz.ayuda1 || pz.ayuda2 || pz.ayuda3
-        if (!tieneAyudas) return null
         return (
-          <div key={pz.id} className="ayuda-bloque">
+          <div className="ayuda-bloque">
             <p className="ayuda-bloque__titulo">
-              Puzzle {idx + 1}: {pz.enunciado?.slice(0, 60)}{(pz.enunciado?.length ?? 0) > 60 ? '…' : ''}
+              {pz.enunciado?.slice(0, 80)}{(pz.enunciado?.length ?? 0) > 80 ? '…' : ''}
             </p>
             {[1, 2, 3].map(nivel => {
               const texto = pz[`ayuda${nivel}`]
@@ -311,7 +340,7 @@ function TabAyuda({ puntos, puntosCompletados, progreso, epocaId, grupoId, equip
             })}
           </div>
         )
-      })}
+      })()}
     </div>
   )
 }
@@ -354,11 +383,11 @@ function TabTiempo({ progreso }) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'qr',     label: 'Escanear', icon: '▣' },
   { id: 'pistas', label: 'Pistas',   icon: '↗' },
   { id: 'mapa',   label: 'Mapa',     icon: '◈' },
-  { id: 'ayuda',  label: 'Ayuda',    icon: '?' },
+  { id: 'qr',     label: 'Escanear', icon: '▣' },
   { id: 'tiempo', label: 'Tiempo',   icon: '⏱' },
+  { id: 'ayuda',  label: 'Ayuda',    icon: '?' },
 ]
 
 export default function ActiveEpoch() {
@@ -413,6 +442,7 @@ export default function ActiveEpoch() {
   }
 
   const puntosCompletados = progreso?.puntosCompletados ?? []
+  const puzzlesCompletados = progreso?.puzzlesCompletados ?? []
   const inicioMillis = progreso?.tiempoInicio?.toMillis?.() ?? null
 
   return (
@@ -443,8 +473,10 @@ export default function ActiveEpoch() {
           <TabAyuda
             puntos={puntos}
             puntosCompletados={puntosCompletados}
+            puzzlesCompletados={puzzlesCompletados}
             progreso={progreso}
             epocaId={epocaId}
+            experienciaId={game.experienciaId}
             grupoId={game.grupoId}
             equipoId={game.equipoId}
           />
