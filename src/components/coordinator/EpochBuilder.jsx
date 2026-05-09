@@ -15,6 +15,8 @@ const TIPOS = {
   nocturno: 'Nocturno',
 }
 
+const DESENLACE_VACIO = { texto: '', videoUrl: '', imagenUrl: '' }
+
 const EPOCA_VACIA = {
   nombre: '',
   descripcion: '',
@@ -22,18 +24,24 @@ const EPOCA_VACIA = {
   conjunta: false,
   briefingTexto: '',
   briefingVideoUrl: '',
+  desenlace: DESENLACE_VACIO,
 }
 
 function FormEpoca({ initial, onGuardar, onCancelar }) {
-  const [form, setForm] = useState(initial)
+  const [form, setForm] = useState({
+    ...initial,
+    desenlace: initial.desenlace ?? DESENLACE_VACIO,
+  })
   const [videoFile, setVideoFile] = useState(null)
+  const [desenlaceImagenFile, setDesenlaceImagenFile] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const sDesenlace = (k, v) => setForm(f => ({ ...f, desenlace: { ...f.desenlace, [k]: v } }))
 
   const submit = async (e) => {
     e.preventDefault()
     setGuardando(true)
-    try { await onGuardar(form, videoFile) }
+    try { await onGuardar(form, videoFile, desenlaceImagenFile) }
     finally { setGuardando(false) }
   }
 
@@ -112,6 +120,46 @@ function FormEpoca({ initial, onGuardar, onCancelar }) {
         </div>
       </div>
 
+      <div className="builder-form__section">
+        <p className="builder-form__section-title">Desenlace</p>
+        <p className="builder-form__section-help">
+          Este contenido se muestra al jugador cuando completa todos los puntos y puzzles de la época.
+        </p>
+        <div className="form__group">
+          <label className="form__label">Texto del desenlace</label>
+          <textarea
+            rows={3}
+            value={form.desenlace.texto}
+            onChange={e => sDesenlace('texto', e.target.value)}
+            placeholder="Narración final que verán los jugadores al completar la época"
+          />
+        </div>
+        <div className="form-grid-2">
+          <div className="form__group">
+            <label className="form__label">URL del vídeo del desenlace</label>
+            <input
+              type="url"
+              value={form.desenlace.videoUrl}
+              onChange={e => sDesenlace('videoUrl', e.target.value)}
+              placeholder="https://..."
+            />
+          </div>
+          <div className="form__group">
+            <label className="form__label">Imagen del desenlace (opcional)</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={e => setDesenlaceImagenFile(e.target.files[0] ?? null)}
+              className="input--file"
+            />
+            {form.desenlace.imagenUrl && !desenlaceImagenFile && (
+              <span className="text-small text-muted">Imagen guardada</span>
+            )}
+            {desenlaceImagenFile && <span className="text-small text-muted">{desenlaceImagenFile.name}</span>}
+          </div>
+        </div>
+      </div>
+
       <div className="form__actions">
         <button type="button" onClick={onCancelar} className="btn btn--ghost btn--small">
           Cancelar
@@ -145,26 +193,47 @@ export default function EpochBuilder({ experienciaId }) {
     ? 0
     : Math.max(...epocas.map(e => e.orden ?? 0)) + 1
 
-  const handleCrear = async (data, videoFile) => {
+  const handleCrear = async (data, briefingVideoFile, desenlaceImagenFile) => {
     const ref = await createEpoca(experienciaId, { ...data, orden: nextOrden })
-    if (videoFile) {
-      const url = await uploadImagen(
+    const updates = {}
+    if (briefingVideoFile) {
+      updates.briefingVideoUrl = await uploadImagen(
         `experiencias/${experienciaId}/epocas/${ref.id}/briefing`,
-        videoFile
+        briefingVideoFile
       )
-      await updateEpoca(experienciaId, ref.id, { briefingVideoUrl: url })
+    }
+    if (desenlaceImagenFile) {
+      updates.desenlace = {
+        ...data.desenlace,
+        imagenUrl: await uploadImagen(
+          `experiencias/${experienciaId}/epocas/${ref.id}/desenlace-imagen`,
+          desenlaceImagenFile
+        ),
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      await updateEpoca(experienciaId, ref.id, updates)
     }
     setCreando(false)
     setExpandidaId(ref.id)
   }
 
-  const handleEditar = async (epocaId, data, videoFile) => {
+  const handleEditar = async (epocaId, data, briefingVideoFile, desenlaceImagenFile) => {
     const updates = { ...data }
-    if (videoFile) {
+    if (briefingVideoFile) {
       updates.briefingVideoUrl = await uploadImagen(
         `experiencias/${experienciaId}/epocas/${epocaId}/briefing`,
-        videoFile
+        briefingVideoFile
       )
+    }
+    if (desenlaceImagenFile) {
+      updates.desenlace = {
+        ...data.desenlace,
+        imagenUrl: await uploadImagen(
+          `experiencias/${experienciaId}/epocas/${epocaId}/desenlace-imagen`,
+          desenlaceImagenFile
+        ),
+      }
     }
     await updateEpoca(experienciaId, epocaId, updates)
     setEditandoId(null)
@@ -282,7 +351,7 @@ export default function EpochBuilder({ experienciaId }) {
             {editandoId === epoca.id && (
               <FormEpoca
                 initial={epoca}
-                onGuardar={(data, file) => handleEditar(epoca.id, data, file)}
+                onGuardar={(data, bf, dif) => handleEditar(epoca.id, data, bf, dif)}
                 onCancelar={() => setEditandoId(null)}
               />
             )}

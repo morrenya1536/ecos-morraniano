@@ -57,13 +57,11 @@ export default function EpochComplete() {
     if (!game.grupoId || !game.equipoId || !game.experienciaId || !epocaId) return
 
     const init = async () => {
-      // Load epoch for video desenlace
       const epocaSnap = await getDoc(
         doc(db, 'experiencias', game.experienciaId, 'epocas', epocaId)
       )
       if (epocaSnap.exists()) setEpoca({ id: epocaSnap.id, ...epocaSnap.data() })
 
-      // Load progreso + mark done
       const snap = await getProgresoEpoca(game.grupoId, game.equipoId, epocaId)
       if (snap.exists()) {
         const data = snap.data()
@@ -118,13 +116,15 @@ export default function EpochComplete() {
     }
   }
 
+  const desenlace = epoca?.desenlace
+
   return (
     <div className="page page--dark epoch-complete">
-      {/* Desenlace video */}
-      {epoca?.desenlaceVideoUrl && (
+      {/* Desenlace: vídeo */}
+      {desenlace?.videoUrl && (
         <div className="epoch-complete__desenlace">
           <video
-            src={epoca.desenlaceVideoUrl}
+            src={desenlace.videoUrl}
             controls
             autoPlay
             playsInline
@@ -133,6 +133,21 @@ export default function EpochComplete() {
         </div>
       )}
 
+      {/* Desenlace: imagen (solo si no hay vídeo) */}
+      {!desenlace?.videoUrl && desenlace?.imagenUrl && (
+        <div className="epoch-complete__desenlace-imagen">
+          <img src={desenlace.imagenUrl} alt="Desenlace de la época" className="media-imagen" />
+        </div>
+      )}
+
+      {/* Desenlace: texto */}
+      {desenlace?.texto && (
+        <div className="epoch-complete__desenlace-texto">
+          <p>{desenlace.texto}</p>
+        </div>
+      )}
+
+      {/* Resumen de tiempo */}
       <div className="epoch-complete__hero">
         <div className="epoch-complete__check">✓</div>
         <h1 className="epoch-complete__titulo">¡Época completada!</h1>
@@ -141,6 +156,7 @@ export default function EpochComplete() {
         )}
       </div>
 
+      {/* Resumen de ayudas y puntos */}
       <div className="epoch-complete__stats">
         <div className="stat-item">
           <span className="stat-item__value">{progreso?.puntosCompletados?.length ?? 0}</span>
@@ -162,15 +178,7 @@ export default function EpochComplete() {
         )}
       </div>
 
-      {/* Coin instructions */}
-      <div className="moneda-instrucciones">
-        <p className="moneda-instrucciones__titulo">Moneda de la época</p>
-        <p className="moneda-instrucciones__texto">
-          Entrega la moneda física que encontrasteis al coordinador para validar la época completada.
-          Sin la moneda no se registrará el tiempo.
-        </p>
-      </div>
-
+      {/* Estado del otro equipo */}
       {otrosEquipos.length > 0 && (
         <div className="epoch-complete__otros">
           <p className="tab-section-title">Otros equipos</p>
@@ -184,6 +192,15 @@ export default function EpochComplete() {
           ))}
         </div>
       )}
+
+      {/* Instrucciones de la moneda */}
+      <div className="moneda-instrucciones">
+        <p className="moneda-instrucciones__titulo">Moneda de la época</p>
+        <p className="moneda-instrucciones__texto">
+          Entrega la moneda física que encontrasteis al coordinador para validar la época completada.
+          Sin la moneda no se registrará el tiempo.
+        </p>
+      </div>
 
       <div className="epoch-complete__footer">
         <button

@@ -59,10 +59,17 @@ Cada experiencia tiene una o varias épocas que se juegan de forma secuencial.
 {
   nombre: string,             // ej: "La Era Romana"
   descripcion: string,
-  orden: number,              // 1, 2, 3... determina el orden de juego
-  activa: boolean,
-  imagenUrl: string,
-  narrativa: string,          // texto de ambientación que ve el jugador al entrar
+  tipo: 'logica' | 'observacion' | 'fisico' | 'nocturno',
+  conjunta: boolean,          // si todos los equipos la juegan juntos
+  orden: number,              // 0, 1, 2... determina el orden de juego
+  briefingTexto: string,      // narración introductoria que ve el jugador al inicio
+  briefingVideoUrl: string,   // Firebase Storage o URL externa
+  desenlace: {
+    texto: string,            // narración final mostrada al completar la época
+    videoUrl: string,         // Firebase Storage o URL externa
+    imagenUrl: string,        // Firebase Storage
+  },
+  creadoEn: Timestamp,
 }
 ```
 
