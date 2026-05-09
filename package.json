@@ -10,6 +10,8 @@
     "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@zxing/browser": "^0.2.0",
+    "@zxing/library": "^0.22.0",
     "firebase": "^10.14.1",
     "html5-qrcode": "^2.3.8",
     "leaflet": "^1.9.4",

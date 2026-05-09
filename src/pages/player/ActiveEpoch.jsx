@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
-import { Html5Qrcode } from 'html5-qrcode'
+import { BrowserMultiFormatReader } from '@zxing/browser'
 import { useGame } from '../../context/GameContext'
 import {
   subscribeProgresoEpoca,
@@ -66,9 +66,10 @@ function EpochTimerBar({ tiempoInicioMillis, penalizacionMinutos = 0 }) {
 
 // ─── Tab QR ───────────────────────────────────────────────────────────────────
 function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinutos, onPuntoConfirmado }) {
-  const qrRef = useRef(null)
+  const videoRef = useRef(null)
   const mountedRef = useRef(true)
   const procesandoRef = useRef(false)
+  const controlsRef = useRef(null) // IScannerControls de @zxing/browser
 
   // Refs para que el callback de escaneo siempre lea los datos más recientes,
   // aunque haya sido creado antes de una re-renderización del padre.
@@ -84,46 +85,42 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
   const pendingPunto = puntos.find(p => !puntosCompletados.includes(p.id))
   const elapsed = useElapsed(tiempoInicioMillis)
 
-  // Limpieza al desmontar: libera la cámara aunque start() no haya terminado.
+  // Libera la cámara al desmontar (p.ej. cambio de tab o navegación).
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-      const scanner = qrRef.current
-      qrRef.current = null
-      if (scanner) scanner.stop().then(() => scanner.clear()).catch(() => {})
+      controlsRef.current?.stop()
+      controlsRef.current = null
     }
   }, [])
 
-  const detener = async () => {
-    const scanner = qrRef.current
-    qrRef.current = null
+  const detener = () => {
+    controlsRef.current?.stop()
+    controlsRef.current = null
     procesandoRef.current = false
-    if (scanner) {
-      try { await scanner.stop(); scanner.clear() } catch { /* ignorar */ }
-    }
     setEstado('idle')
     setMensajeScan(null)
   }
 
   const iniciar = async () => {
-    if (qrRef.current || estado === 'iniciando') return
+    if (controlsRef.current || estado === 'iniciando') return
     setEstado('iniciando')
     setErrorCamara('')
     setMensajeScan(null)
     procesandoRef.current = false
 
     try {
-      const scanner = new Html5Qrcode('qr-reader')
-      await scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decoded) => {
-          // El callback puede dispararse varias veces por segundo con el mismo QR.
-          if (procesandoRef.current) return
+      const reader = new BrowserMultiFormatReader()
+      const controls = await reader.decodeFromConstraints(
+        { video: { facingMode: 'environment' } },
+        videoRef.current,
+        (result) => {
+          // El callback se dispara por cada fotograma; result es null si no hay QR.
+          if (!result || procesandoRef.current) return
           procesandoRef.current = true
 
-          const scannedId = decoded.trim()
+          const scannedId = result.getText().trim()
           const todosPuntos = puntosRef.current
           const completados = completadosRef.current
 
@@ -141,22 +138,20 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
             return
           }
 
-          // Escaneo correcto — la navegación desmontará el componente y limpiará la cámara.
+          // Escaneo correcto — la navegación desmontará el componente y liberará la cámara.
           onPuntoConfirmado(scannedId)
-        },
-        () => {} // errores de decodificación por fotograma, ignorar
+        }
       )
 
-      // Comprobar que el componente no se haya desmontado durante el await
+      // Guardia: el componente puede haberse desmontado durante el await.
       if (!mountedRef.current) {
-        scanner.stop().catch(() => {})
+        controls.stop()
         return
       }
-      qrRef.current = scanner
+      controlsRef.current = controls
       setEstado('activo')
     } catch (err) {
       if (!mountedRef.current) return
-      qrRef.current = null
       setErrorCamara(mensajeCamara(err))
       setEstado('error')
     }
@@ -180,10 +175,12 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
         Busca el QR en la localización y escanéalo para desbloquear los puzzles.
       </p>
 
-      {/* html5-qrcode inyecta el vídeo aquí; debe estar siempre en el DOM */}
-      <div
-        id="qr-reader"
+      {/* zxing inyecta el stream directamente en este elemento <video> */}
+      <video
+        ref={videoRef}
         className={`qr-reader-box${estado === 'activo' ? ' qr-reader-box--activo' : ''}`}
+        playsInline
+        muted
       />
 
       {estado === 'activo' && (
