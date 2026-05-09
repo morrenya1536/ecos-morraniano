@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
-import { BrowserMultiFormatReader } from '@zxing/browser'
+import {
+  MultiFormatReader,
+  BinaryBitmap,
+  HybridBinarizer,
+  HTMLCanvasElementLuminanceSource,
+} from '@zxing/library'
 import { useGame } from '../../context/GameContext'
 import {
   subscribeProgresoEpoca,
@@ -64,15 +69,18 @@ function EpochTimerBar({ tiempoInicioMillis, penalizacionMinutos = 0 }) {
   )
 }
 
+const TIENE_BARCODE_DETECTOR = typeof BarcodeDetector !== 'undefined'
+
 // ─── Tab QR ───────────────────────────────────────────────────────────────────
 function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinutos, onPuntoConfirmado }) {
   const videoRef = useRef(null)
+  const canvasRef = useRef(null)
+  const loopRef = useRef(null)   // ID del setTimeout del bucle de escaneo
+  const streamRef = useRef(null) // MediaStream activo
   const mountedRef = useRef(true)
   const procesandoRef = useRef(false)
-  const controlsRef = useRef(null) // IScannerControls de @zxing/browser
 
-  // Refs para que el callback de escaneo siempre lea los datos más recientes,
-  // aunque haya sido creado antes de una re-renderización del padre.
+  // Refs para que los callbacks de escaneo lean siempre los datos más recientes.
   const puntosRef = useRef(puntos)
   const completadosRef = useRef(puntosCompletados)
   useEffect(() => { puntosRef.current = puntos }, [puntos])
@@ -85,71 +93,117 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
   const pendingPunto = puntos.find(p => !puntosCompletados.includes(p.id))
   const elapsed = useElapsed(tiempoInicioMillis)
 
-  // Libera la cámara al desmontar (p.ej. cambio de tab o navegación).
+  // Libera la cámara al desmontar (cambio de tab o navegación).
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-      controlsRef.current?.stop()
-      controlsRef.current = null
+      clearTimeout(loopRef.current)
+      streamRef.current?.getTracks().forEach(t => t.stop())
+      streamRef.current = null
     }
   }, [])
 
   const detener = () => {
-    controlsRef.current?.stop()
-    controlsRef.current = null
+    clearTimeout(loopRef.current)
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
     procesandoRef.current = false
     setEstado('idle')
     setMensajeScan(null)
   }
 
+  // Lógica de validación compartida por ambos modos de escaneo.
+  const procesarEscaneo = (rawValue) => {
+    if (procesandoRef.current) return
+    procesandoRef.current = true
+
+    const scannedId = rawValue.trim()
+    const todosPuntos = puntosRef.current
+    const completados = completadosRef.current
+
+    if (!todosPuntos.some(p => p.id === scannedId)) {
+      setMensajeScan({ texto: 'QR no reconocido. Este código no pertenece a esta época.', tipo: 'error' })
+      setTimeout(() => { setMensajeScan(null); procesandoRef.current = false }, 3000)
+      return
+    }
+
+    const puntoActual = todosPuntos.find(p => !completados.includes(p.id))
+    if (!puntoActual || scannedId !== puntoActual.id) {
+      setMensajeScan({ texto: 'Este no es el punto que buscas. Sigue explorando.', tipo: 'error' })
+      setTimeout(() => { setMensajeScan(null); procesandoRef.current = false }, 3000)
+      return
+    }
+
+    // Correcto — la navegación desmontará el componente y liberará la cámara.
+    onPuntoConfirmado(scannedId)
+  }
+
+  const iniciarBucleBarcode = (video) => {
+    let detector
+    try { detector = new BarcodeDetector({ formats: ['qr_code'] }) }
+    catch { return false }
+
+    const tick = async () => {
+      if (!streamRef.current) return
+      try {
+        const barcodes = await detector.detect(video)
+        if (barcodes.length > 0) procesarEscaneo(barcodes[0].rawValue)
+      } catch { /* NotFoundException por frame, normal */ }
+      loopRef.current = setTimeout(tick, 300)
+    }
+    tick()
+    return true
+  }
+
+  const iniciarBucleZxing = (video) => {
+    const reader = new MultiFormatReader()
+    const canvas = canvasRef.current
+
+    const tick = () => {
+      if (!streamRef.current) return
+      const w = video.videoWidth
+      const h = video.videoHeight
+      if (w && h) {
+        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h }
+        canvas.getContext('2d').drawImage(video, 0, 0, w, h)
+        try {
+          const source = new HTMLCanvasElementLuminanceSource(canvas)
+          const result = reader.decode(new BinaryBitmap(new HybridBinarizer(source)))
+          procesarEscaneo(result.getText())
+        } catch { /* NotFoundException por frame, normal */ }
+      }
+      loopRef.current = setTimeout(tick, 300)
+    }
+    tick()
+  }
+
   const iniciar = async () => {
-    if (controlsRef.current || estado === 'iniciando') return
+    if (streamRef.current || estado === 'iniciando') return
     setEstado('iniciando')
     setErrorCamara('')
     setMensajeScan(null)
     procesandoRef.current = false
 
     try {
-      const reader = new BrowserMultiFormatReader()
-      const controls = await reader.decodeFromConstraints(
-        { video: { facingMode: 'environment' } },
-        videoRef.current,
-        (result) => {
-          // El callback se dispara por cada fotograma; result es null si no hay QR.
-          if (!result || procesandoRef.current) return
-          procesandoRef.current = true
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+      })
 
-          const scannedId = result.getText().trim()
-          const todosPuntos = puntosRef.current
-          const completados = completadosRef.current
-
-          const esDeEstaEpoca = todosPuntos.some(p => p.id === scannedId)
-          if (!esDeEstaEpoca) {
-            setMensajeScan({ texto: 'QR no reconocido. Este código no pertenece a esta época.', tipo: 'error' })
-            setTimeout(() => { setMensajeScan(null); procesandoRef.current = false }, 3000)
-            return
-          }
-
-          const puntoActual = todosPuntos.find(p => !completados.includes(p.id))
-          if (!puntoActual || scannedId !== puntoActual.id) {
-            setMensajeScan({ texto: 'Este no es el punto que buscas. Sigue explorando.', tipo: 'error' })
-            setTimeout(() => { setMensajeScan(null); procesandoRef.current = false }, 3000)
-            return
-          }
-
-          // Escaneo correcto — la navegación desmontará el componente y liberará la cámara.
-          onPuntoConfirmado(scannedId)
-        }
-      )
-
-      // Guardia: el componente puede haberse desmontado durante el await.
       if (!mountedRef.current) {
-        controls.stop()
+        stream.getTracks().forEach(t => t.stop())
         return
       }
-      controlsRef.current = controls
+
+      streamRef.current = stream
+      const video = videoRef.current
+      video.srcObject = stream
+      await video.play()
       setEstado('activo')
+
+      if (TIENE_BARCODE_DETECTOR && iniciarBucleBarcode(video)) return
+      iniciarBucleZxing(video)
     } catch (err) {
       if (!mountedRef.current) return
       setErrorCamara(mensajeCamara(err))
@@ -175,13 +229,14 @@ function TabQR({ puntos, puntosCompletados, tiempoInicioMillis, penalizacionMinu
         Busca el QR en la localización y escanéalo para desbloquear los puzzles.
       </p>
 
-      {/* zxing inyecta el stream directamente en este elemento <video> */}
       <video
         ref={videoRef}
         className={`qr-reader-box${estado === 'activo' ? ' qr-reader-box--activo' : ''}`}
         playsInline
         muted
       />
+      {/* Canvas oculto para el fallback @zxing cuando BarcodeDetector no está disponible */}
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
 
       {estado === 'activo' && (
         <p className="qr-scan-label">
