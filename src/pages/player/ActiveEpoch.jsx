@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap, Polygon, Polyline, Marker } from 'react-leaflet'
+import { divIcon } from 'leaflet'
 import {
   MultiFormatReader,
   BinaryBitmap,
@@ -15,7 +16,7 @@ import {
   reanudarEpoca,
   marcarPuntoEscaneado,
 } from '../../services/firestore'
-import { getDocs, collection } from 'firebase/firestore'
+import { getDocs, collection, getDoc, doc } from 'firebase/firestore'
 import { db } from '../../services/firebase'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -71,6 +72,59 @@ function mensajeCamara(err) {
 function RecenterMap({ lat, lng }) {
   const map = useMap()
   useEffect(() => { if (lat && lng) map.setView([lat, lng], map.getZoom()) }, [lat, lng, map])
+  return null
+}
+
+// ─── Map helpers ──────────────────────────────────────────────────────────────
+function puntoDentroDePoligono(lat, lng, poligono) {
+  let dentro = false
+  for (let i = 0, j = poligono.length - 1; i < poligono.length; j = i++) {
+    const lati = poligono[i].lat, lngi = poligono[i].lng
+    const latj = poligono[j].lat, lngj = poligono[j].lng
+    const intersecta = ((lngi > lng) !== (lngj > lng)) &&
+      (lat < (latj - lati) * (lng - lngi) / (lngj - lngi) + lati)
+    if (intersecta) dentro = !dentro
+  }
+  return dentro
+}
+
+function calcularPuntoDestino(lat1, lng1, bearing, distanciaM) {
+  const R = 6371000
+  const δ = distanciaM / R
+  const θ = (bearing * Math.PI) / 180
+  const φ1 = (lat1 * Math.PI) / 180
+  const λ1 = (lng1 * Math.PI) / 180
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ))
+  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2))
+  return { lat: (φ2 * 180) / Math.PI, lng: (λ2 * 180) / Math.PI }
+}
+
+function crearIconoJugador(heading) {
+  const rot = heading ?? 0
+  const flecha = heading != null
+    ? `<div class="jugador-flecha" style="transform:rotate(${rot}deg)">▲</div>`
+    : ''
+  return divIcon({
+    html: `<div class="jugador-dot"></div>${flecha}`,
+    className: 'jugador-icono',
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+  })
+}
+
+function FitZona({ zonaJuego }) {
+  const map = useMap()
+  const fittedRef = useRef(false)
+  useEffect(() => {
+    if (fittedRef.current || zonaJuego.length < 2) return
+    fittedRef.current = true
+    const lats = zonaJuego.map(p => p.lat)
+    const lngs = zonaJuego.map(p => p.lng)
+    map.fitBounds(
+      [[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]],
+      { padding: [30, 30] }
+    )
+  }, [zonaJuego, map])
   return null
 }
 
@@ -376,16 +430,155 @@ function TabPistas({ puntos, puntosCompletados, puntosEscaneados, puzzlesComplet
 }
 
 // ─── Tab Mapa ─────────────────────────────────────────────────────────────────
-function TabMapa({ puntos, puntosCompletados }) {
+function TabMapa({ puntos, puntosCompletados, zonaJuego }) {
   const pendingPunto = puntos.find(p => !puntosCompletados.includes(p.id))
-  const center = pendingPunto?.lat
-    ? [Number(pendingPunto.lat), Number(pendingPunto.lng)]
-    : [41.3825, 2.1769]
+
+  // GPS
+  const [posGPS, setPosGPS] = useState(null)
+
+  // Orientación / brújula
+  // iOS 13+ requiere permiso explícito; otros dispositivos no
+  const [orientacionEstado, setOrientacionEstado] = useState(() =>
+    typeof DeviceOrientationEvent?.requestPermission === 'function' ? 'pendiente' : 'activo'
+  )
+  const [heading, setHeading] = useState(null)
+
+  // Regla
+  const [reglaActiva, setReglaActiva] = useState(false)
+  const [reglaDistancia, setReglaDistancia] = useState('')
+  const [reglaLinea, setReglaLinea] = useState(null) // { inicio:[lat,lng], fin:[lat,lng] }
+
+  // GPS watchPosition
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    const id = navigator.geolocation.watchPosition(
+      pos => setPosGPS({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      null,
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+    )
+    return () => navigator.geolocation.clearWatch(id)
+  }, [])
+
+  // DeviceOrientationEvent
+  useEffect(() => {
+    if (orientacionEstado !== 'activo') return
+    const handler = (e) => {
+      const h = e.webkitCompassHeading != null
+        ? e.webkitCompassHeading
+        : e.alpha != null ? (360 - e.alpha) % 360 : null
+      if (h != null) setHeading(h)
+    }
+    window.addEventListener('deviceorientation', handler, true)
+    return () => window.removeEventListener('deviceorientation', handler, true)
+  }, [orientacionEstado])
+
+  const pedirPermisoOrientacion = async () => {
+    try {
+      const r = await DeviceOrientationEvent.requestPermission()
+      setOrientacionEstado(r === 'granted' ? 'activo' : 'denegado')
+    } catch {
+      setOrientacionEstado('denegado')
+    }
+  }
+
+  // Centro inicial del mapa
+  const centerInicial = useMemo(() => {
+    if (posGPS) return [posGPS.lat, posGPS.lng]
+    if (zonaJuego.length >= 3) {
+      const lat = zonaJuego.reduce((s, p) => s + p.lat, 0) / zonaJuego.length
+      const lng = zonaJuego.reduce((s, p) => s + p.lng, 0) / zonaJuego.length
+      return [lat, lng]
+    }
+    if (pendingPunto?.lat) return [Number(pendingPunto.lat), Number(pendingPunto.lng)]
+    return [41.3825, 2.1769]
+  }, []) // Solo calcular una vez al montar
+
+  // Icono del jugador
+  const iconoJugador = useMemo(() => crearIconoJugador(heading), [heading])
+
+  // ¿Fuera de zona?
+  const fueraDeZona = posGPS && zonaJuego.length >= 3 &&
+    !puntoDentroDePoligono(posGPS.lat, posGPS.lng, zonaJuego)
+
+  // Calcular regla
+  const calcularRegla = () => {
+    if (!posGPS) return
+    const dist = parseFloat(reglaDistancia)
+    if (isNaN(dist) || dist <= 0) return
+    const destino = calcularPuntoDestino(posGPS.lat, posGPS.lng, heading ?? 0, dist)
+    setReglaLinea({ inicio: [posGPS.lat, posGPS.lng], fin: [destino.lat, destino.lng] })
+  }
+
+  const limpiarRegla = () => { setReglaLinea(null); setReglaActiva(false); setReglaDistancia('') }
+
+  const poligonoPositions = zonaJuego.map(p => [p.lat, p.lng])
+  const sinGPS = !posGPS && zonaJuego.length >= 3
 
   return (
     <div className="tab-content tab-mapa">
+      {/* Banner fuera de zona */}
+      {fueraDeZona && (
+        <div className="mapa-banner-fuera">⚠ Fuera de zona. Vuelve a la zona de juego</div>
+      )}
+
+      {/* Brújula */}
+      <div className="mapa-brujula-wrapper">
+        <div className="mapa-brujula" style={{ transform: `rotate(${-(heading ?? 0)}deg)` }}>
+          <span className="mapa-brujula__norte">N</span>
+          <span className="mapa-brujula__sur">S</span>
+        </div>
+        <span className="mapa-brujula__grados">
+          {heading != null ? `${String(Math.round(heading)).padStart(3, '0')}°` : '---'}
+        </span>
+      </div>
+
+      {/* Botón iOS brújula */}
+      {orientacionEstado === 'pendiente' && (
+        <button className="btn btn--ghost btn--small mapa-btn-brujula" onClick={pedirPermisoOrientacion}>
+          Activar brújula
+        </button>
+      )}
+
+      {/* Panel regla */}
+      <div className="mapa-regla-panel">
+        {!reglaActiva ? (
+          <button className="btn btn--ghost btn--small" onClick={() => setReglaActiva(true)}>
+            📏 Regla
+          </button>
+        ) : (
+          <div className="mapa-regla-form">
+            <input
+              type="number"
+              min={1}
+              value={reglaDistancia}
+              onChange={e => setReglaDistancia(e.target.value)}
+              placeholder="Distancia (m)"
+              className="mapa-regla-input"
+            />
+            <button
+              className="btn btn--primary btn--small"
+              onClick={calcularRegla}
+              disabled={!posGPS || !reglaDistancia}
+            >
+              Calcular
+            </button>
+            <button className="btn btn--ghost btn--small" onClick={limpiarRegla}>
+              Limpiar
+            </button>
+          </div>
+        )}
+        {reglaActiva && !posGPS && (
+          <p className="mapa-regla-hint">Necesitas GPS para usar la regla.</p>
+        )}
+        {reglaLinea && (
+          <p className="mapa-regla-coords">
+            Destino: {reglaLinea.fin[0].toFixed(6)}, {reglaLinea.fin[1].toFixed(6)}
+          </p>
+        )}
+      </div>
+
       <MapContainer
-        center={center}
+        center={centerInicial}
         zoom={17}
         style={{ height: '100%', width: '100%' }}
         zoomControl
@@ -395,7 +588,19 @@ function TabMapa({ puntos, puntosCompletados }) {
           attribution="Tiles © Esri"
           maxZoom={19}
         />
-        <RecenterMap lat={center[0]} lng={center[1]} />
+
+        {/* Ajustar vista inicial a zona de juego si no hay GPS */}
+        {sinGPS && <FitZona zonaJuego={zonaJuego} />}
+
+        {/* Polígono zona de juego */}
+        {poligonoPositions.length >= 3 && (
+          <Polygon
+            positions={poligonoPositions}
+            pathOptions={{ color: '#4fc3f7', fillColor: '#4fc3f7', fillOpacity: 0.12, weight: 2, dashArray: '6 4' }}
+          />
+        )}
+
+        {/* Puntos de la época */}
         {puntos.map(p => {
           if (!p.lat || !p.lng) return null
           const done = puntosCompletados.includes(p.id)
@@ -415,6 +620,34 @@ function TabMapa({ puntos, puntosCompletados }) {
             </CircleMarker>
           )
         })}
+
+        {/* Posición del jugador */}
+        {posGPS && (
+          <Marker
+            position={[posGPS.lat, posGPS.lng]}
+            icon={iconoJugador}
+            zIndexOffset={1000}
+          />
+        )}
+
+        {/* Línea de regla */}
+        {reglaLinea && (
+          <>
+            <Polyline
+              positions={[reglaLinea.inicio, reglaLinea.fin]}
+              pathOptions={{ color: '#ff9800', weight: 2, dashArray: '8 5' }}
+            />
+            <CircleMarker
+              center={reglaLinea.fin}
+              radius={8}
+              pathOptions={{ color: '#ff9800', fillColor: '#ff9800', fillOpacity: 0.9, weight: 2 }}
+            >
+              <Popup>
+                {reglaLinea.fin[0].toFixed(6)}, {reglaLinea.fin[1].toFixed(6)}
+              </Popup>
+            </CircleMarker>
+          </>
+        )}
       </MapContainer>
     </div>
   )
@@ -606,6 +839,7 @@ export default function ActiveEpoch() {
   const [puntos, setPuntos] = useState([])
   const [progreso, setProgreso] = useState(null)
   const [pauseLoading, setPauseLoading] = useState(false)
+  const [zonaJuego, setZonaJuego] = useState([])
 
   const equipoIdProgreso = game.grupoModo === 'colaborativo' && game.epocaConjunta
     ? 'conjunto'
@@ -623,6 +857,13 @@ export default function ActiveEpoch() {
       )
     })
   }, [game.experienciaId, epocaId])
+
+  useEffect(() => {
+    if (!game.experienciaId) return
+    getDoc(doc(db, 'experiencias', game.experienciaId)).then(snap => {
+      if (snap.exists()) setZonaJuego(snap.data().zonaJuego ?? [])
+    })
+  }, [game.experienciaId])
 
   useEffect(() => {
     if (!game.grupoId || !equipoIdProgreso || !epocaId) return
@@ -689,7 +930,7 @@ export default function ActiveEpoch() {
           />
         )}
         {activeTab === 'mapa' && (
-          <TabMapa puntos={puntos} puntosCompletados={puntosCompletados} />
+          <TabMapa puntos={puntos} puntosCompletados={puntosCompletados} zonaJuego={zonaJuego} />
         )}
         {activeTab === 'ayuda' && (
           <TabAyuda

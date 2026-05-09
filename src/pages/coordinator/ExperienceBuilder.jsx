@@ -27,6 +27,12 @@ export default function ExperienceBuilder() {
   const [error, setError] = useState(null)
   const [guardado, setGuardado] = useState(false)
 
+  // Zona de juego
+  const [zonaJuego, setZonaJuego] = useState([])
+  const [nuevoLat, setNuevoLat] = useState('')
+  const [nuevoLng, setNuevoLng] = useState('')
+  const [guardandoZona, setGuardandoZona] = useState(false)
+
   useEffect(() => {
     if (esNueva) return
     getExperiencia(experienciaId).then((snap) => {
@@ -38,9 +44,33 @@ export default function ExperienceBuilder() {
         activa: d.activa ?? false,
       })
       setImagenUrlActual(d.imagenPortadaUrl ?? null)
+      setZonaJuego(d.zonaJuego ?? [])
       setCargando(false)
     })
   }, [experienciaId, esNueva, navigate])
+
+  const guardarZona = async (nuevaZona) => {
+    setGuardandoZona(true)
+    try { await updateExperiencia(experienciaId, { zonaJuego: nuevaZona }) }
+    finally { setGuardandoZona(false) }
+  }
+
+  const añadirCoordenada = async () => {
+    const lat = parseFloat(nuevoLat)
+    const lng = parseFloat(nuevoLng)
+    if (isNaN(lat) || isNaN(lng)) return
+    const nueva = [...zonaJuego, { lat, lng }]
+    setZonaJuego(nueva)
+    setNuevoLat('')
+    setNuevoLng('')
+    await guardarZona(nueva)
+  }
+
+  const eliminarCoordenada = async (idx) => {
+    const nueva = zonaJuego.filter((_, i) => i !== idx)
+    setZonaJuego(nueva)
+    await guardarZona(nueva)
+  }
 
   const handleImagen = (e) => {
     const file = e.target.files[0]
@@ -164,6 +194,71 @@ export default function ExperienceBuilder() {
           </button>
         </div>
       </form>
+
+      {/* ── Zona de juego ─────────────────────────────────────────── */}
+      {!esNueva && (
+        <div className="builder-section-wrapper">
+          <hr className="builder-divider" />
+          <div className="builder-section">
+            <div className="section-header">
+              <h2>Zona de juego</h2>
+              {guardandoZona && <span className="text-muted text-small">Guardando...</span>}
+            </div>
+            <p className="form__hint">
+              Define el perímetro de la zona de juego. La última coordenada se conectará
+              automáticamente con la primera para cerrar el polígono.
+            </p>
+
+            {zonaJuego.length === 0 ? (
+              <p className="text-muted text-small">Sin coordenadas todavía.</p>
+            ) : (
+              <div className="zona-lista">
+                {zonaJuego.map((coord, idx) => (
+                  <div key={idx} className="zona-coord">
+                    <span className="zona-coord__idx">{idx + 1}</span>
+                    <code className="zona-coord__val">
+                      {coord.lat.toFixed(6)}, {coord.lng.toFixed(6)}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => eliminarCoordenada(idx)}
+                      className="btn btn--ghost btn--small btn--icon"
+                      title="Eliminar coordenada"
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="zona-añadir">
+              <input
+                type="number"
+                step="any"
+                value={nuevoLat}
+                onChange={e => setNuevoLat(e.target.value)}
+                placeholder="Latitud"
+                className="zona-input"
+              />
+              <input
+                type="number"
+                step="any"
+                value={nuevoLng}
+                onChange={e => setNuevoLng(e.target.value)}
+                placeholder="Longitud"
+                className="zona-input"
+              />
+              <button
+                type="button"
+                onClick={añadirCoordenada}
+                disabled={!nuevoLat || !nuevoLng || guardandoZona}
+                className="btn btn--small"
+              >
+                + Añadir coordenada
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Gestor de épocas (fuera del <form> para evitar anidamiento) */}
       {!esNueva && (

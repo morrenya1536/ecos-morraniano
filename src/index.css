@@ -1656,3 +1656,194 @@ select option { background: var(--color-surface); }
   border-radius: var(--radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* ─── Mapa: marcador del jugador ─────────────────────────────────────────── */
+.jugador-icono {
+  background: none !important;
+  border: none !important;
+  overflow: visible !important;
+}
+.jugador-dot {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 14px; height: 14px;
+  transform: translate(-50%, -50%);
+  background: #2196f3;
+  border: 2px solid white;
+  border-radius: 50%;
+  animation: jugador-pulsar 2s infinite;
+  box-shadow: 0 0 6px rgba(33,150,243,0.6);
+}
+@keyframes jugador-pulsar {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(33,150,243,0.5); }
+  50%       { box-shadow: 0 0 0 10px rgba(33,150,243,0); }
+}
+.jugador-flecha {
+  position: absolute;
+  top: 0; left: 50%;
+  transform-origin: 50% 22px;
+  color: #2196f3;
+  font-size: 14px;
+  line-height: 1;
+  margin-left: -7px;
+  text-shadow: 0 0 3px white, 0 0 3px white;
+  pointer-events: none;
+}
+
+/* ─── Mapa: overlays ─────────────────────────────────────────────────────── */
+.tab-mapa { position: relative; }
+
+.mapa-banner-fuera {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  background: rgba(233, 69, 96, 0.92);
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 8px 16px;
+  pointer-events: none;
+}
+
+/* ─── Mapa: brújula ──────────────────────────────────────────────────────── */
+.mapa-brujula-wrapper {
+  position: absolute;
+  top: 12px; right: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+.mapa-brujula {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: rgba(26, 26, 46, 0.88);
+  border: 2px solid rgba(255,255,255,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  transition: transform 0.15s ease-out;
+}
+.mapa-brujula__norte {
+  position: absolute;
+  top: 3px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #e94560;
+  letter-spacing: 0.05em;
+}
+.mapa-brujula__sur {
+  position: absolute;
+  bottom: 3px;
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.5);
+  font-weight: 600;
+}
+.mapa-brujula__grados {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.7);
+  font-family: monospace;
+  background: rgba(26,26,46,0.75);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* ─── Mapa: botón brújula iOS ────────────────────────────────────────────── */
+.mapa-btn-brujula {
+  position: absolute;
+  top: 68px; right: 12px;
+  z-index: 1000;
+}
+
+/* ─── Mapa: panel regla ──────────────────────────────────────────────────── */
+.mapa-regla-panel {
+  position: absolute;
+  bottom: 12px; left: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mapa-regla-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(26, 26, 46, 0.92);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.mapa-regla-input {
+  width: 110px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08);
+  color: var(--color-text);
+  font-size: 0.875rem;
+}
+.mapa-regla-input::placeholder { color: var(--color-text-muted); }
+.mapa-regla-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: rgba(26,26,46,0.88);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+.mapa-regla-coords {
+  font-size: 0.75rem;
+  font-family: monospace;
+  color: #ff9800;
+  background: rgba(26,26,46,0.88);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+/* ─── ExperienceBuilder: zona de juego ───────────────────────────────────── */
+.zona-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--gap);
+}
+.zona-coord {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 6px;
+}
+.zona-coord__idx {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  min-width: 20px;
+  text-align: right;
+}
+.zona-coord__val {
+  flex: 1;
+  font-size: 0.82rem;
+  color: var(--color-text);
+}
+.zona-añadir {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.zona-input {
+  width: 130px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: var(--color-text);
+  font-size: 0.875rem;
+}
+.zona-input::placeholder { color: var(--color-text-muted); }
