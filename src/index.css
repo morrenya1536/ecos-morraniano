@@ -1613,6 +1613,107 @@ select option { background: var(--color-surface); }
 .ranking-item--yo { background: rgba(233, 69, 96, 0.1); border-color: var(--color-accent); }
 .ranking-item--en-curso { opacity: 0.55; }
 
+/* ─── Partidas activas (CoordinatorHome) ───────────────────────────────── */
+.partida-card {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  margin-bottom: var(--gap);
+}
+.partida-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.partida-card__nombre {
+  font-size: 1rem;
+  font-weight: 600;
+  flex: 1;
+}
+.partida-card__equipos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.partida-equipo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--color-surface-2);
+  border-radius: var(--radius);
+  flex-wrap: wrap;
+}
+.partida-equipo__info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+.partida-equipo__nombre { font-weight: 500; }
+.partida-equipo__tiempo { font-size: 0.85rem; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+.partida-equipo__confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.estado-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.estado-badge--activo   { background: rgba(76,175,80,0.2); color: #4caf50; }
+.estado-badge--pausado  { background: rgba(255,152,0,0.2); color: #ff9800; }
+.estado-badge--completado { background: rgba(100,100,200,0.2); color: #9fa8da; }
+.estado-badge--no-iniciado { background: rgba(136,136,136,0.15); color: var(--color-text-muted); }
+
+/* ─── Cambio de tipo modal (PuzzleScreen) ───────────────────────────────── */
+.modal-cambio-tipo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--gap);
+  padding: var(--gap-lg) var(--gap);
+  max-width: 480px;
+  margin: auto;
+}
+.modal-cambio-tipo__icono { font-size: 4rem; line-height: 1; }
+.modal-cambio-tipo__titulo { font-size: 1.5rem; font-weight: 700; }
+.modal-cambio-tipo__texto { color: var(--color-text-muted); }
+
+/* ─── GPS debug overlay (TabMapa) ───────────────────────────────────────── */
+.mapa-debug-gps {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.72);
+  color: #e0e0e0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  pointer-events: none;
+  max-width: 260px;
+  line-height: 1.5;
+}
+.mapa-debug-gps__label { color: #aaa; }
+.mapa-debug-gps__ok    { color: #4caf50; }
+.mapa-debug-gps__precision { color: #888; }
+.mapa-debug-gps__esperando { color: #ff9800; }
+.mapa-debug-gps__err   { color: #e94560; }
+
 .ranking-item__pos {
   font-size: 0.8rem;
   font-weight: 700;

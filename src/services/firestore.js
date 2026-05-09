@@ -276,3 +276,9 @@ export const subscribeRanking = (experienciaId, grupoId, callback) =>
     collection(db, 'ranking', experienciaId, 'grupos', grupoId, 'equipos'),
     callback
   )
+
+export const subscribeGruposAll = (callback) =>
+  onSnapshot(collection(db, 'grupos'), callback)
+
+export const resetearFase = (grupoId, equipoId, epocaId) =>
+  deleteDoc(progresoDoc(grupoId, equipoId, epocaId))

@@ -12,8 +12,6 @@ import { useGame } from '../../context/GameContext'
 import {
   subscribeProgresoEpoca,
   registrarAyuda,
-  pausarEpoca,
-  reanudarEpoca,
   marcarPuntoEscaneado,
 } from '../../services/firestore'
 import { getDocs, collection, getDoc, doc } from 'firebase/firestore'
@@ -126,27 +124,6 @@ function FitZona({ zonaJuego }) {
     )
   }, [zonaJuego, map])
   return null
-}
-
-// ─── Pause bar ─────────────────────────────────────────────────────────────────
-function PauseBar({ estado, onPausar, onReanudar, loading }) {
-  if (!estado || estado === 'completado') return null
-  return (
-    <div className={`pause-bar${estado === 'pausado' ? ' pause-bar--pausado' : ''}`}>
-      {estado === 'pausado' ? (
-        <>
-          <span className="pause-bar__label">⏸ Fase pausada</span>
-          <button className="btn btn--ghost btn--small" onClick={onReanudar} disabled={loading}>
-            {loading ? '...' : '▶ Reanudar'}
-          </button>
-        </>
-      ) : (
-        <button className="btn btn--ghost btn--small pause-bar__btn" onClick={onPausar} disabled={loading}>
-          {loading ? '...' : '⏸ Pausar'}
-        </button>
-      )}
-    </div>
-  )
 }
 
 const TIENE_BARCODE_DETECTOR = typeof BarcodeDetector !== 'undefined'
@@ -449,11 +426,26 @@ function TabMapa({ puntos, puntosCompletados, zonaJuego }) {
   const [reglaLinea, setReglaLinea] = useState(null) // { inicio:[lat,lng], fin:[lat,lng] }
 
   // GPS watchPosition
+  const [gpsEstado, setGpsEstado] = useState(() =>
+    typeof navigator !== 'undefined' && navigator.geolocation ? 'esperando' : 'no-soporte'
+  )
+  const [gpsError, setGpsError] = useState(null)
+  const [gpsPrecision, setGpsPrecision] = useState(null)
+
   useEffect(() => {
-    if (!navigator.geolocation) return
+    if (!navigator.geolocation) { setGpsEstado('no-soporte'); return }
     const id = navigator.geolocation.watchPosition(
-      pos => setPosGPS({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      null,
+      pos => {
+        setPosGPS({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        setGpsEstado('activo')
+        setGpsPrecision(pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : null)
+      },
+      (err) => {
+        setGpsEstado('error')
+        if (err.code === 1) setGpsError('Permiso denegado')
+        else if (err.code === 2) setGpsError('Posición no disponible')
+        else setGpsError('Timeout GPS')
+      },
       { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
     )
     return () => navigator.geolocation.clearWatch(id)
@@ -649,6 +641,30 @@ function TabMapa({ puntos, puntosCompletados, zonaJuego }) {
           </>
         )}
       </MapContainer>
+
+      {/* GPS debug overlay */}
+      <div className="mapa-debug-gps">
+        <span className="mapa-debug-gps__label">GPS </span>
+        {gpsEstado === 'activo' && posGPS && (
+          <>
+            <span className="mapa-debug-gps__ok">
+              {posGPS.lat.toFixed(5)}, {posGPS.lng.toFixed(5)}
+            </span>
+            {gpsPrecision != null && (
+              <span className="mapa-debug-gps__precision"> ±{gpsPrecision}m</span>
+            )}
+          </>
+        )}
+        {gpsEstado === 'esperando' && (
+          <span className="mapa-debug-gps__esperando">Buscando señal…</span>
+        )}
+        {gpsEstado === 'no-soporte' && (
+          <span className="mapa-debug-gps__err">No soportado</span>
+        )}
+        {gpsEstado === 'error' && (
+          <span className="mapa-debug-gps__err">{gpsError}</span>
+        )}
+      </div>
     </div>
   )
 }
@@ -838,7 +854,6 @@ export default function ActiveEpoch() {
   const [activeTab, setActiveTab] = useState(location.state?.activeTab ?? 'pistas')
   const [puntos, setPuntos] = useState([])
   const [progreso, setProgreso] = useState(null)
-  const [pauseLoading, setPauseLoading] = useState(false)
   const [zonaJuego, setZonaJuego] = useState([])
 
   const equipoIdProgreso = game.grupoModo === 'colaborativo' && game.epocaConjunta
@@ -888,27 +903,12 @@ export default function ActiveEpoch() {
     navigate(`/jugador/puzzle/${epocaId}/${puntoId}`)
   }
 
-  const handlePausar = async () => {
-    setPauseLoading(true)
-    try { await pausarEpoca(game.grupoId, equipoIdProgreso, epocaId) } finally { setPauseLoading(false) }
-  }
-  const handleReanudar = async () => {
-    setPauseLoading(true)
-    try { await reanudarEpoca(game.grupoId, equipoIdProgreso, epocaId) } finally { setPauseLoading(false) }
-  }
-
   const puntosCompletados = progreso?.puntosCompletados ?? []
   const puntosEscaneados = progreso?.puntosEscaneados ?? []
   const puzzlesCompletados = progreso?.puzzlesCompletados ?? []
 
   return (
     <div className="active-epoch">
-      <PauseBar
-        estado={progreso?.estado}
-        onPausar={handlePausar}
-        onReanudar={handleReanudar}
-        loading={pauseLoading}
-      />
       <div className="active-epoch__content">
         {activeTab === 'pistas' && (
           <TabPistas

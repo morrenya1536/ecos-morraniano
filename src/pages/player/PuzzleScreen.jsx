@@ -10,7 +10,6 @@ import { useGame } from '../../context/GameContext'
 import {
   marcarPuntoCompletado,
   marcarPuzzleCompletado,
-  subscribeProgresoEpoca,
   getProgresoEpoca,
   pausarEpoca,
   reanudarEpoca,
@@ -219,17 +218,9 @@ export default function PuzzleScreen() {
   const [llegadaVista, setLlegadaVista] = useState(false)
   const [completado, setCompletado] = useState(false)
   const [siguientePista, setSiguientePista] = useState(null)
+  const [modalCambioTipo, setModalCambioTipo] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
-  const [progresoEstado, setProgresoEstado] = useState('activo')
-  const [pausando, setPausando] = useState(false)
-
-  useEffect(() => {
-    if (!game.grupoId || !equipoIdProgreso || !epocaId) return
-    return subscribeProgresoEpoca(game.grupoId, equipoIdProgreso, epocaId, snap => {
-      if (snap.exists()) setProgresoEstado(snap.data().estado ?? 'activo')
-    })
-  }, [game.grupoId, equipoIdProgreso, epocaId])
 
   useEffect(() => {
     if (!game.experienciaId || !epocaId || !puntoId || !game.grupoId || !equipoIdProgreso) return
@@ -281,19 +272,15 @@ export default function PuzzleScreen() {
         .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
       const currentIdx = allPuntos.findIndex(p => p.id === puntoId)
       const next = allPuntos[currentIdx + 1]
-      if (next) setSiguientePista(next.pistaEntrada ?? null)
-      setCompletado(true)
+      if (next && punto?.tipo && next.tipo && punto.tipo !== next.tipo) {
+        await pausarEpoca(game.grupoId, equipoIdProgreso, epocaId)
+        setModalCambioTipo({ siguientePista: next.pistaEntrada ?? null, nuevoTipo: next.tipo })
+      } else {
+        if (next) setSiguientePista(next.pistaEntrada ?? null)
+        setCompletado(true)
+      }
       setGuardando(false)
     }
-  }
-
-  const handlePausar = async () => {
-    setPausando(true)
-    try { await pausarEpoca(game.grupoId, equipoIdProgreso, epocaId) } finally { setPausando(false) }
-  }
-  const handleReanudar = async () => {
-    setPausando(true)
-    try { await reanudarEpoca(game.grupoId, equipoIdProgreso, epocaId) } finally { setPausando(false) }
   }
 
   const navigateToTab = (tabId) => {
@@ -320,6 +307,53 @@ export default function PuzzleScreen() {
   }
 
   const puzzle = puzzles[puzzleIdx]
+
+  if (modalCambioTipo) {
+    const esNocturno = modalCambioTipo.nuevoTipo === 'nocturno'
+    return (
+      <div className="active-epoch">
+        <div className="active-epoch__content">
+          <div className="modal-cambio-tipo">
+            <div className="modal-cambio-tipo__icono">{esNocturno ? '🌙' : '☀️'}</div>
+            <h2 className="modal-cambio-tipo__titulo">
+              {esNocturno ? '¡Llega la noche!' : '¡Sale el sol!'}
+            </h2>
+            <p className="modal-cambio-tipo__texto">
+              {esNocturno
+                ? 'El siguiente punto es nocturno. Continúa cuando anochezca.'
+                : 'El siguiente punto es diurno. ¡Continúa cuando sea de día!'}
+            </p>
+            {modalCambioTipo.siguientePista && (
+              <div className="puzzle-completado__pista">
+                <p className="puzzle-completado__pista-label">Tu siguiente pista:</p>
+                {modalCambioTipo.siguientePista.imagenUrl && (
+                  <img src={modalCambioTipo.siguientePista.imagenUrl} alt="" className="media-image" />
+                )}
+                {modalCambioTipo.siguientePista.videoUrl && (
+                  <video src={modalCambioTipo.siguientePista.videoUrl} controls playsInline className="media-player" />
+                )}
+                {modalCambioTipo.siguientePista.texto && (
+                  <p className="puzzle-completado__pista-texto">{modalCambioTipo.siguientePista.texto}</p>
+                )}
+              </div>
+            )}
+            <button
+              className="btn btn--primary btn--large"
+              onClick={async () => {
+                await reanudarEpoca(game.grupoId, equipoIdProgreso, epocaId)
+                setSiguientePista(modalCambioTipo.siguientePista)
+                setModalCambioTipo(null)
+                setCompletado(true)
+              }}
+            >
+              ¡Entendido! Continuar
+            </button>
+          </div>
+        </div>
+        {bottomNav}
+      </div>
+    )
+  }
 
   if (completado) {
     return (
@@ -371,14 +405,6 @@ export default function PuzzleScreen() {
             <span className="puzzle-screen__progress">
               {puzzleIdx + 1} / {puzzles.length || 1}
             </span>
-            <button
-              onClick={progresoEstado === 'pausado' ? handleReanudar : handlePausar}
-              className="btn btn--ghost btn--small"
-              disabled={pausando}
-              title={progresoEstado === 'pausado' ? 'Reanudar época' : 'Pausar época'}
-            >
-              {pausando ? '...' : progresoEstado === 'pausado' ? '▶' : '⏸'}
-            </button>
           </header>
 
           {!llegadaVista ? (

@@ -10,15 +10,15 @@ import { uploadImagen } from '../../services/storage'
 import PuzzleBuilder from './PuzzleBuilder'
 
 const TIPOS_PUNTO = {
-  normal: 'Normal',
-  colaborativo: 'Colaborativo',
+  diurno: 'Diurno',
+  nocturno: 'Nocturno',
 }
 
 const PUNTO_VACIO = {
   nombre: '',
   lat: '',
   lng: '',
-  tipo: 'normal',
+  tipo: 'diurno',
   llegadaTexto: '',
   llegadaVideoUrl: '',
   pistaEntradaTexto: '',
