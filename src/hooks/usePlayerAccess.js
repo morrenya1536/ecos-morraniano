@@ -7,7 +7,7 @@ export function usePlayerAccess() {
   const [error, setError] = useState(null)
   const [cargando, setCargando] = useState(false)
 
-  const acceder = async ({ codigoGrupo, nombreEquipo, codigoEquipo }) => {
+  const acceder = async ({ codigoGrupo, codigoEquipo }) => {
     setError(null)
     setCargando(true)
     try {
@@ -27,13 +27,11 @@ export function usePlayerAccess() {
 
       const equiposSnap = await getEquipos(grupo.id)
       const equipoDoc = equiposSnap.docs.find(
-        (d) =>
-          d.data().nombre.toLowerCase() === nombreEquipo.toLowerCase() &&
-          d.data().codigo === codigoEquipo.toUpperCase()
+        (d) => d.data().codigo === codigoEquipo.toUpperCase()
       )
 
       if (!equipoDoc) {
-        setError('Nombre de equipo o código de equipo incorrecto')
+        setError('Código de equipo incorrecto')
         return false
       }
 
