@@ -7,6 +7,7 @@ import {
   subscribeGruposAll,
   subscribeEquipos,
   subscribeProgresoEpoca,
+  subscribeProgreso,
   resetearFase,
 } from '../../services/firestore'
 import LoadingScreen from '../../components/shared/LoadingScreen'
@@ -41,18 +42,57 @@ function useElapsedCoord(progreso) {
   return elapsed
 }
 
-function EquipoRow({ grupoId, equipo, onResetear }) {
-  const [progreso, setProgreso] = useState(undefined) // undefined = loading
-  const epocaId = equipo.epocaAsignadaId
+function EquipoRow({ grupoId, equipo, modoGrupo }) {
+  // undefined = cargando (suscripción no ha respondido aún)
+  // null = confirmado sin progreso
+  // object = progreso real
+  const [progreso, setProgreso] = useState(undefined)
+  const [epocaActivaId, setEpocaActivaId] = useState(null)
   const elapsed = useElapsedCoord(progreso ?? null)
   const [confirmando, setConfirmando] = useState(false)
+  const [reseteando, setReseteando] = useState(false)
 
   useEffect(() => {
-    if (!grupoId || !equipo.id || !epocaId) { setProgreso(null); return }
-    return subscribeProgresoEpoca(grupoId, equipo.id, epocaId, snap => {
-      setProgreso(snap.exists() ? snap.data() : null)
+    if (!grupoId || !equipo.id) {
+      setProgreso(null)
+      return
+    }
+
+    const epocaAsignada = equipo.epocaAsignadaId || null
+
+    if (modoGrupo === 'colaborativo' && epocaAsignada) {
+      // Colaborativo con fase asignada: escuchar esa época concreta
+      const ruta = `grupos/${grupoId}/equipos/${equipo.id}/progreso/${epocaAsignada}`
+      console.log('[CoordPanel] Suscribiendo doc:', ruta)
+      setEpocaActivaId(epocaAsignada)
+      return subscribeProgresoEpoca(grupoId, equipo.id, epocaAsignada, snap => {
+        const data = snap.exists() ? snap.data() : null
+        console.log('[CoordPanel] Snapshot recibido:', ruta, snap.exists() ? data?.estado : '(no existe)')
+        setProgreso(data)
+      })
+    }
+
+    // Competitivo o sin época asignada: escuchar toda la colección de progreso
+    const ruta = `grupos/${grupoId}/equipos/${equipo.id}/progreso`
+    console.log('[CoordPanel] Suscribiendo colección:', ruta)
+    return subscribeProgreso(grupoId, equipo.id, snap => {
+      if (snap.empty) {
+        console.log('[CoordPanel] Colección vacía:', ruta)
+        setEpocaActivaId(null)
+        setProgreso(null)
+        return
+      }
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      console.log('[CoordPanel] Docs progreso:', ruta, docs.map(d => `${d.id.slice(0, 6)}:${d.estado}`))
+      // Prioridad: activo/pausado → después el más reciente completado
+      const vivo = docs.find(d => d.estado === 'activo' || d.estado === 'pausado')
+      const ref = vivo ?? [...docs].sort(
+        (a, b) => (b.tiempoAcumuladoMs ?? 0) - (a.tiempoAcumuladoMs ?? 0)
+      )[0]
+      setEpocaActivaId(ref.id)
+      setProgreso(ref)
     })
-  }, [grupoId, equipo.id, epocaId])
+  }, [grupoId, equipo.id, modoGrupo, equipo.epocaAsignadaId])
 
   const estado = progreso?.estado ?? null
   const estadoLabel = estado === 'activo' ? 'Activo'
@@ -60,6 +100,21 @@ function EquipoRow({ grupoId, equipo, onResetear }) {
     : estado === 'completado' ? 'Completado'
     : progreso === null ? 'No iniciado'
     : '…'
+
+  // En colaborativo, la época a resetear es siempre la asignada;
+  // en competitivo, la que hayamos detectado como activa
+  const epocaResetId = (modoGrupo === 'colaborativo' ? equipo.epocaAsignadaId : epocaActivaId) || null
+
+  const handleResetear = async () => {
+    if (!epocaResetId) return
+    setReseteando(true)
+    try {
+      await resetearFase(grupoId, equipo.id, epocaResetId)
+      setConfirmando(false)
+    } finally {
+      setReseteando(false)
+    }
+  }
 
   return (
     <div className="partida-equipo">
@@ -70,30 +125,31 @@ function EquipoRow({ grupoId, equipo, onResetear }) {
             {estadoLabel}
           </span>
         )}
-        {progreso && estado !== 'completado' && (
+        {progreso && estado === 'activo' && (
           <span className="partida-equipo__tiempo">{formatTime(elapsed)}</span>
         )}
       </div>
-      {progreso && estado !== 'completado' && !confirmando && (
+
+      {/* El botón de resetear aparece siempre que haya época identificada */}
+      {epocaResetId && !confirmando && (
         <button
           onClick={() => setConfirmando(true)}
           className="btn btn--ghost btn--small"
-          title="Borrar el progreso de este equipo en su fase"
         >
-          Resetear fase
+          Resetear
         </button>
       )}
       {confirmando && (
         <div className="partida-equipo__confirm">
-          <span className="text-muted text-small">¿Resetear «{equipo.nombre}»?</span>
+          <span className="text-muted text-small">
+            ¿Resetear la fase de «{equipo.nombre}»? El equipo tendrá que empezar desde el principio.
+          </span>
           <button
-            onClick={async () => {
-              await resetearFase(grupoId, equipo.id, epocaId)
-              setConfirmando(false)
-            }}
+            onClick={handleResetear}
+            disabled={reseteando}
             className="btn btn--danger btn--small"
           >
-            Sí, resetear
+            {reseteando ? '...' : 'Sí, resetear'}
           </button>
           <button onClick={() => setConfirmando(false)} className="btn btn--ghost btn--small">
             Cancelar
@@ -115,12 +171,14 @@ function GrupoCard({ grupo }) {
 
   if (equipos.length === 0) return null
 
+  const modoGrupo = grupo.modo ?? 'competitivo'
+
   return (
     <div className="partida-card">
       <div className="partida-card__header">
         <h3 className="partida-card__nombre">{grupo.nombre}</h3>
         <span className="modo-badge">
-          {grupo.modo === 'colaborativo' ? 'Colaborativo' : 'Competitivo'}
+          {modoGrupo === 'colaborativo' ? 'Colaborativo' : 'Competitivo'}
         </span>
         <Link
           to={`/coordinador/grupos/${grupo.experienciaId}`}
@@ -131,7 +189,12 @@ function GrupoCard({ grupo }) {
       </div>
       <div className="partida-card__equipos">
         {equipos.map(eq => (
-          <EquipoRow key={eq.id} grupoId={grupo.id} equipo={eq} />
+          <EquipoRow
+            key={eq.id}
+            grupoId={grupo.id}
+            equipo={eq}
+            modoGrupo={modoGrupo}
+          />
         ))}
       </div>
     </div>
