@@ -15,6 +15,7 @@ const initialState = {
   grupoModo: null,
   faseAsignadaId: null,
   epocaConjunta: false,
+  idiomaElegido: 'es',
 }
 
 function cargarDesdeStorage() {

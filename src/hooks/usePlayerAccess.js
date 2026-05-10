@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getGrupoByCodigo, getEquipos } from '../services/firestore'
+import { getGrupoByCodigo, getEquipos, getExperiencia } from '../services/firestore'
 import { useGame } from '../context/GameContext'
 
 export function usePlayerAccess() {
@@ -12,28 +12,31 @@ export function usePlayerAccess() {
     setCargando(true)
     try {
       const snapshot = await getGrupoByCodigo(codigoGrupo.toUpperCase())
-      if (snapshot.empty) {
-        setError('Código de grupo no válido')
-        return false
-      }
+      if (snapshot.empty) { setError('Código de grupo no válido'); return null }
 
       const grupoDoc = snapshot.docs[0]
       const grupo = { id: grupoDoc.id, ...grupoDoc.data() }
 
-      if (!grupo.activo) {
-        setError('Este grupo no está activo')
-        return false
-      }
+      if (!grupo.activo) { setError('Este grupo no está activo'); return null }
 
       const equiposSnap = await getEquipos(grupo.id)
       const equipoDoc = equiposSnap.docs.find(
-        (d) => d.data().codigo === codigoEquipo.toUpperCase()
+        d => d.data().codigo === codigoEquipo.toUpperCase()
       )
+      if (!equipoDoc) { setError('Código de equipo incorrecto'); return null }
 
-      if (!equipoDoc) {
-        setError('Código de equipo incorrecto')
-        return false
-      }
+      // Cargar idiomas de la experiencia
+      const expSnap = await getExperiencia(grupo.experienciaId)
+      const idiomasDisponibles = expSnap.exists()
+        ? (expSnap.data().idiomasDisponibles ?? ['es'])
+        : ['es']
+
+      // Idioma ya elegido (colaborativo: grupoIdiomaGrupo; competitivo: equipoIdiomaElegido)
+      const modo = grupo.modo ?? 'competitivo'
+      const idiomaElegido =
+        (modo === 'colaborativo' && grupo.idiomaGrupo) ||
+        equipoDoc.data().idiomaElegido ||
+        null
 
       setSesion({
         grupoId: grupo.id,
@@ -43,10 +46,10 @@ export function usePlayerAccess() {
         experienciaId: grupo.experienciaId,
       })
 
-      return true
-    } catch (e) {
+      return { idiomasDisponibles, idiomaElegido, grupoId: grupo.id, equipoId: equipoDoc.id, modo }
+    } catch {
       setError('Error al conectar. Comprueba tu conexión')
-      return false
+      return null
     } finally {
       setCargando(false)
     }

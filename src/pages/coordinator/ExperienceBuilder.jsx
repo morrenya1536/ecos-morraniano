@@ -11,6 +11,8 @@ import LoadingScreen from '../../components/shared/LoadingScreen'
 import EpochBuilder from '../../components/coordinator/EpochBuilder'
 
 const FORM_VACIO = { nombre: '', descripcion: '', activa: false }
+const TODOS_IDIOMAS = ['es', 'ca', 'en']
+const IDIOMA_NOMBRE = { es: 'Castellano (ES)', ca: 'Català (CA)', en: 'English (EN)' }
 
 export default function ExperienceBuilder() {
   const { experienciaId } = useParams()
@@ -26,6 +28,7 @@ export default function ExperienceBuilder() {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState(null)
   const [guardado, setGuardado] = useState(false)
+  const [idiomasDisponibles, setIdiomasDisponibles] = useState(['es'])
 
   // Zona de juego
   const [zonaJuego, setZonaJuego] = useState([])
@@ -45,6 +48,7 @@ export default function ExperienceBuilder() {
       })
       setImagenUrlActual(d.imagenPortadaUrl ?? null)
       setZonaJuego(d.zonaJuego ?? [])
+      setIdiomasDisponibles(d.idiomasDisponibles ?? ['es'])
       setCargando(false)
     })
   }, [experienciaId, esNueva, navigate])
@@ -79,6 +83,17 @@ export default function ExperienceBuilder() {
     setImagenPreview(URL.createObjectURL(file))
   }
 
+  const toggleIdioma = async (lang) => {
+    const nuevo = idiomasDisponibles.includes(lang)
+      ? idiomasDisponibles.filter(l => l !== lang)
+      : [...idiomasDisponibles, lang]
+    if (nuevo.length === 0) return // al menos 1 idioma
+    setIdiomasDisponibles(nuevo)
+    if (!esNueva) {
+      await updateExperiencia(experienciaId, { idiomasDisponibles: nuevo })
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.nombre.trim()) return
@@ -88,10 +103,10 @@ export default function ExperienceBuilder() {
       let id = experienciaId
 
       if (esNueva) {
-        const ref = await createExperiencia({ ...form, creadoPor: coordinador.uid })
+        const ref = await createExperiencia({ ...form, idiomasDisponibles, creadoPor: coordinador.uid })
         id = ref.id
       } else {
-        await updateExperiencia(id, form)
+        await updateExperiencia(id, { ...form, idiomasDisponibles })
       }
 
       if (imagenFile) {
@@ -184,6 +199,24 @@ export default function ExperienceBuilder() {
           </label>
         </div>
 
+        <div className="form__group">
+          <label className="form__label">Idiomas disponibles</label>
+          <p className="form__hint">Activa los idiomas en los que quieres crear el contenido. Debe haber al menos uno.</p>
+          <div className="idiomas-selector">
+            {TODOS_IDIOMAS.map(lang => (
+              <label key={lang} className={`idioma-opcion${idiomasDisponibles.includes(lang) ? ' idioma-opcion--activo' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={idiomasDisponibles.includes(lang)}
+                  onChange={() => toggleIdioma(lang)}
+                  disabled={idiomasDisponibles.includes(lang) && idiomasDisponibles.length === 1}
+                />
+                <span>{IDIOMA_NOMBRE[lang]}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         {error && <p className="error">{error}</p>}
         {guardado && <p className="success">✓ Cambios guardados</p>}
 
@@ -264,7 +297,7 @@ export default function ExperienceBuilder() {
       {!esNueva && (
         <div className="builder-section-wrapper">
           <hr className="builder-divider" />
-          <EpochBuilder experienciaId={experienciaId} />
+          <EpochBuilder experienciaId={experienciaId} idiomasDisponibles={idiomasDisponibles} />
         </div>
       )}
     </main>

@@ -7,6 +7,7 @@ import {
   HTMLCanvasElementLuminanceSource,
 } from '@zxing/library'
 import { useGame } from '../../context/GameContext'
+import { getText } from '../../utils/helpers'
 import {
   marcarPuntoCompletado,
   marcarPuzzleCompletado,
@@ -240,7 +241,7 @@ function SecuenciaColaborativa({ secuencia, onCorrecto }) {
 }
 
 // ─── Puzzle form ──────────────────────────────────────────────────────────────
-function PuzzleForm({ puzzle, onCorrecto }) {
+function PuzzleForm({ puzzle, idioma, onCorrecto }) {
   const [respuesta, setRespuesta] = useState('')
   const [error, setError] = useState(null)
 
@@ -254,7 +255,8 @@ function PuzzleForm({ puzzle, onCorrecto }) {
 
   const submit = (e) => {
     e.preventDefault()
-    if (normalizar(respuesta) === normalizar(puzzle.respuestaCorrecta)) {
+    const correcta = getText(puzzle.respuestaCorrecta, idioma)
+    if (normalizar(respuesta) === normalizar(correcta)) {
       onCorrecto()
     } else {
       setError('Respuesta incorrecta, inténtalo de nuevo.')
@@ -262,7 +264,7 @@ function PuzzleForm({ puzzle, onCorrecto }) {
   }
 
   if (puzzle.tipoRespuesta === 'escanear_qr') {
-    return <QRPuzzleInput respuestaCorrecta={puzzle.respuestaCorrecta} onCorrecto={onCorrecto} />
+    return <QRPuzzleInput respuestaCorrecta={getText(puzzle.respuestaCorrecta, idioma)} onCorrecto={onCorrecto} />
   }
 
   return (
@@ -305,6 +307,7 @@ export default function PuzzleScreen() {
   const { epocaId, puntoId } = useParams()
   const { game } = useGame()
   const navigate = useNavigate()
+  const idioma = game.idiomaElegido ?? 'es'
   const equipoIdProgreso = game.grupoModo === 'colaborativo' && game.epocaConjunta
     ? 'conjunto'
     : game.equipoId
@@ -428,8 +431,8 @@ export default function PuzzleScreen() {
                 {modalCambioTipo.siguientePista.videoUrl && (
                   <video src={modalCambioTipo.siguientePista.videoUrl} controls playsInline className="media-player" />
                 )}
-                {modalCambioTipo.siguientePista.texto && (
-                  <p className="puzzle-completado__pista-texto">{modalCambioTipo.siguientePista.texto}</p>
+                {getText(modalCambioTipo.siguientePista.texto, idioma) && (
+                  <p className="puzzle-completado__pista-texto">{getText(modalCambioTipo.siguientePista.texto, idioma)}</p>
                 )}
               </div>
             )}
@@ -467,8 +470,8 @@ export default function PuzzleScreen() {
                 {siguientePista.videoUrl && (
                   <video src={siguientePista.videoUrl} controls playsInline className="media-player" />
                 )}
-                {siguientePista.texto && (
-                  <p className="puzzle-completado__pista-texto">{siguientePista.texto}</p>
+                {getText(siguientePista.texto, idioma) && (
+                  <p className="puzzle-completado__pista-texto">{getText(siguientePista.texto, idioma)}</p>
                 )}
               </div>
             ) : (
@@ -512,8 +515,8 @@ export default function PuzzleScreen() {
               {punto?.llegadaVideoUrl && (
                 <video src={punto.llegadaVideoUrl} controls playsInline className="media-player" />
               )}
-              {punto?.llegadaTexto && (
-                <p className="puzzle-screen__llegada-texto">{punto.llegadaTexto}</p>
+              {getText(punto?.llegadaTexto, idioma) && (
+                <p className="puzzle-screen__llegada-texto">{getText(punto.llegadaTexto, idioma)}</p>
               )}
               <button
                 onClick={() => setLlegadaVista(true)}
@@ -527,19 +530,19 @@ export default function PuzzleScreen() {
             </div>
           ) : puzzle ? (
             <div className="puzzle-screen__puzzle">
-              <p className="puzzle-screen__enunciado">{puzzle.enunciado}</p>
+              <p className="puzzle-screen__enunciado">{getText(puzzle.enunciado, idioma)}</p>
               {puzzle.contenidoImagenUrl && (
                 <img src={puzzle.contenidoImagenUrl} alt="" className="media-image" />
               )}
               {puzzle.contenidoVideoUrl && (
                 <video src={puzzle.contenidoVideoUrl} controls playsInline className="media-player" />
               )}
-              {puzzle.contenidoTexto && (
-                <p className="puzzle-screen__contenido-texto">{puzzle.contenidoTexto}</p>
+              {getText(puzzle.contenidoTexto, idioma) && (
+                <p className="puzzle-screen__contenido-texto">{getText(puzzle.contenidoTexto, idioma)}</p>
               )}
               {guardando
                 ? <div className="spinner" />
-                : <PuzzleForm puzzle={puzzle} onCorrecto={handlePuzzleCorrecto} />
+                : <PuzzleForm puzzle={puzzle} idioma={idioma} onCorrecto={handlePuzzleCorrecto} />
               }
             </div>
           ) : (

@@ -1,3 +1,16 @@
+export const IDIOMA_LABELS = { es: 'Castellano', ca: 'Català', en: 'English' }
+
+// Devuelve el texto en el idioma pedido.
+// Acepta campo como string (legacy) o como objeto { es, ca, en }.
+export function getText(campo, idioma) {
+  if (!campo && campo !== 0) return ''
+  if (typeof campo === 'string') return campo
+  if (typeof campo === 'object' && !Array.isArray(campo)) {
+    return campo[idioma] ?? campo[Object.keys(campo)[0]] ?? ''
+  }
+  return ''
+}
+
 export const generarCodigo = (longitud = 6) => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   return Array.from({ length: longitud }, () =>

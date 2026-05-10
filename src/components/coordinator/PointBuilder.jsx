@@ -7,6 +7,7 @@ import {
   deletePunto,
 } from '../../services/firestore'
 import { uploadImagen } from '../../services/storage'
+import { TabsIdioma, toMulti } from '../shared/TabsIdioma'
 import PuzzleBuilder from './PuzzleBuilder'
 
 const TIPOS_PUNTO = {
@@ -26,14 +27,20 @@ const PUNTO_VACIO = {
   pistaEntradaImagenUrl: '',
 }
 
-function FormPunto({ initial, onGuardar, onCancelar }) {
+function FormPunto({ initial, idiomas, onGuardar, onCancelar }) {
   const [form, setForm] = useState(initial)
+  const [idiomaActivo, setIdiomaActivo] = useState(idiomas[0] ?? 'es')
   const [llegadaFile, setLlegadaFile] = useState(null)
   const [llegadaPreview, setLlegadaPreview] = useState(null)
   const [pistaFile, setPistaFile] = useState(null)
   const [pistaPreview, setPistaPreview] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const sMulti = (key, value) => setForm(f => ({
+    ...f,
+    [key]: { ...toMulti(f[key], idiomas), [idiomaActivo]: value },
+  }))
 
   const handleLlegadaImagen = (e) => {
     const file = e.target.files[0]
@@ -56,8 +63,19 @@ function FormPunto({ initial, onGuardar, onCancelar }) {
     finally { setGuardando(false) }
   }
 
+  const pistaTextoActivo = toMulti(form.pistaEntradaTexto, idiomas)[idiomaActivo] ?? ''
+  const llegadaTextoActivo = toMulti(form.llegadaTexto, idiomas)[idiomaActivo] ?? ''
+
   return (
     <form onSubmit={submit} className="builder-form">
+
+      {/* ── Selector de idioma ───────────────────────────────────── */}
+      {idiomas.length > 1 && (
+        <div className="builder-form__idioma-bar">
+          <span className="builder-form__idioma-label">Editando en:</span>
+          <TabsIdioma idiomas={idiomas} activo={idiomaActivo} onChange={setIdiomaActivo} />
+        </div>
+      )}
 
       {/* ── Datos generales ──────────────────────────────────────── */}
       <div className="builder-form__section">
@@ -116,8 +134,8 @@ function FormPunto({ initial, onGuardar, onCancelar }) {
           <label className="form__label">Texto de la pista</label>
           <textarea
             rows={3}
-            value={form.pistaEntradaTexto}
-            onChange={e => s('pistaEntradaTexto', e.target.value)}
+            value={pistaTextoActivo}
+            onChange={e => sMulti('pistaEntradaTexto', e.target.value)}
             placeholder="Descripción, acertijo o indicación para llegar a este punto"
           />
         </div>
@@ -157,8 +175,8 @@ function FormPunto({ initial, onGuardar, onCancelar }) {
           <label className="form__label">Texto de llegada</label>
           <textarea
             rows={3}
-            value={form.llegadaTexto}
-            onChange={e => s('llegadaTexto', e.target.value)}
+            value={llegadaTextoActivo}
+            onChange={e => sMulti('llegadaTexto', e.target.value)}
             placeholder="Texto o narración que verán los jugadores al llegar al punto"
           />
         </div>
@@ -276,7 +294,8 @@ function QrInfo({ puntoId }) {
   )
 }
 
-export default function PointBuilder({ experienciaId, epocaId }) {
+export default function PointBuilder({ experienciaId, epocaId, idiomasDisponibles = ['es'] }) {
+  const idiomas = idiomasDisponibles.length > 0 ? idiomasDisponibles : ['es']
   const [puntos, setPuntos] = useState([])
   const [creando, setCreando] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
@@ -308,7 +327,7 @@ export default function PointBuilder({ experienciaId, epocaId }) {
       llegadaVideoUrl: data.llegadaVideoUrl,
       orden: nextOrden,
       pistaEntrada: {
-        texto: data.pistaEntradaTexto,
+        texto: data.pistaEntradaTexto ?? {},
         videoUrl: data.pistaEntradaVideoUrl,
         imagenUrl: '',
       },
@@ -364,7 +383,7 @@ export default function PointBuilder({ experienciaId, epocaId }) {
       llegadaVideoUrl: data.llegadaVideoUrl,
       llegadaImagenUrl,
       pistaEntrada: {
-        texto: data.pistaEntradaTexto,
+        texto: data.pistaEntradaTexto ?? {},
         videoUrl: data.pistaEntradaVideoUrl,
         imagenUrl: pistaImagenUrl,
       },
@@ -404,6 +423,7 @@ export default function PointBuilder({ experienciaId, epocaId }) {
       {creando && (
         <FormPunto
           initial={PUNTO_VACIO}
+          idiomas={idiomas}
           onGuardar={handleCrear}
           onCancelar={() => setCreando(false)}
         />
@@ -506,10 +526,11 @@ export default function PointBuilder({ experienciaId, epocaId }) {
                   ...punto,
                   lat: punto.lat ?? '',
                   lng: punto.lng ?? '',
-                  pistaEntradaTexto: punto.pistaEntrada?.texto ?? '',
+                  pistaEntradaTexto: punto.pistaEntrada?.texto ?? {},
                   pistaEntradaVideoUrl: punto.pistaEntrada?.videoUrl ?? '',
                   pistaEntradaImagenUrl: punto.pistaEntrada?.imagenUrl ?? '',
                 }}
+                idiomas={idiomas}
                 onGuardar={(data, files) => handleEditar(punto.id, data, files)}
                 onCancelar={() => setEditandoId(null)}
               />
@@ -522,6 +543,7 @@ export default function PointBuilder({ experienciaId, epocaId }) {
                   experienciaId={experienciaId}
                   epocaId={epocaId}
                   puntoId={punto.id}
+                  idiomasDisponibles={idiomas}
                 />
               </div>
             )}

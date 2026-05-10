@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useGame } from '../../context/GameContext'
+import { getText } from '../../utils/helpers'
 import {
   getExperiencia,
   subscribeEpocas,
@@ -64,13 +65,13 @@ function GlobalTimer({ progresos }) {
   )
 }
 
-function ModalConfirmacion({ fase, onConfirmar, onCancelar }) {
+function ModalConfirmacion({ fase, idioma, onConfirmar, onCancelar }) {
   return (
     <div className="modal-overlay" onClick={onCancelar}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <h2 className="modal__titulo">¿Preparados?</h2>
         <p className="modal__texto">
-          Vais a empezar <strong>{fase.nombre}</strong>.<br />
+          Vais a empezar <strong>{getText(fase.nombre, idioma)}</strong>.<br />
           El cronómetro arrancará al pulsar "Empezar".
         </p>
         <div className="modal__actions">
@@ -225,12 +226,14 @@ export default function PlayerHome() {
     return false
   }
 
+  const idioma = game.idiomaElegido ?? 'es'
+
   const getMensajeBloqueo = (fase) => {
     const prereqs = fase.prerequisitos ?? []
     const pendientes = prereqs.filter(id => !isPrerequisitoCumplido(id))
     if (pendientes.length > 0) {
       const nombres = pendientes
-        .map(id => epocas.find(e => e.id === id)?.nombre ?? id)
+        .map(id => getText(epocas.find(e => e.id === id)?.nombre, idioma) || id)
         .join(', ')
       return `Completa primero: ${nombres}`
     }
@@ -295,6 +298,7 @@ export default function PlayerHome() {
       {modalFase && (
         <ModalConfirmacion
           fase={modalFase}
+          idioma={idioma}
           onConfirmar={confirmarEmpezar}
           onCancelar={() => setModalFase(null)}
         />
@@ -324,7 +328,7 @@ export default function PlayerHome() {
             >
               <div className="epoca-card__header">
                 <div className="epoca-card__info">
-                  <h2 className="epoca-card__nombre">{fase.nombre}</h2>
+                  <h2 className="epoca-card__nombre">{getText(fase.nombre, idioma)}</h2>
                   {fase.conjunta && (
                     <span className="texto-conjunto">Fase conjunta</span>
                   )}
@@ -333,8 +337,8 @@ export default function PlayerHome() {
                       {getMensajeBloqueo(fase)}
                     </p>
                   )}
-                  {estado !== 'bloqueada' && fase.descripcion && (
-                    <p className="epoca-card__desc">{fase.descripcion}</p>
+                  {estado !== 'bloqueada' && getText(fase.descripcion, idioma) && (
+                    <p className="epoca-card__desc">{getText(fase.descripcion, idioma)}</p>
                   )}
                 </div>
                 <span className={`estado-badge estado-badge--${estado}`}>

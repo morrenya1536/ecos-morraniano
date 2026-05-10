@@ -6,6 +6,8 @@ import {
   deleteEpoca,
 } from '../../services/firestore'
 import { uploadImagen } from '../../services/storage'
+import { TabsIdioma, toMulti } from '../shared/TabsIdioma'
+import { getText } from '../../utils/helpers'
 import PointBuilder from './PointBuilder'
 
 const TIPOS = {
@@ -15,30 +17,45 @@ const TIPOS = {
   nocturno: 'Nocturno',
 }
 
-const DESENLACE_VACIO = { texto: '', videoUrl: '', imagenUrl: '' }
+const DESENLACE_VACIO = { texto: {}, videoUrl: '', imagenUrl: '' }
 
 const EPOCA_VACIA = {
-  nombre: '',
-  descripcion: '',
+  nombre: {},
+  descripcion: {},
   tipo: 'logica',
   conjunta: false,
-  briefingTexto: '',
+  briefingTexto: {},
   briefingVideoUrl: '',
   desenlace: DESENLACE_VACIO,
   prerequisitos: [],
 }
 
-function FormEpoca({ initial, epocas, epocaId, onGuardar, onCancelar }) {
+function FormEpoca({ initial, idiomas, epocas, epocaId, onGuardar, onCancelar }) {
   const [form, setForm] = useState({
     ...initial,
     desenlace: initial.desenlace ?? DESENLACE_VACIO,
     prerequisitos: initial.prerequisitos ?? [],
   })
+  const [idiomaActivo, setIdiomaActivo] = useState(idiomas[0] ?? 'es')
   const [videoFile, setVideoFile] = useState(null)
   const [desenlaceImagenFile, setDesenlaceImagenFile] = useState(null)
   const [guardando, setGuardando] = useState(false)
+
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const sDesenlace = (k, v) => setForm(f => ({ ...f, desenlace: { ...f.desenlace, [k]: v } }))
+
+  // Editar un campo multiidioma en el idioma activo
+  const sMulti = (key, value) => setForm(f => ({
+    ...f,
+    [key]: { ...toMulti(f[key], idiomas), [idiomaActivo]: value },
+  }))
+  const sDesenlaceMulti = (key, value) => setForm(f => ({
+    ...f,
+    desenlace: {
+      ...f.desenlace,
+      [key]: { ...toMulti(f.desenlace?.[key], idiomas), [idiomaActivo]: value },
+    },
+  }))
 
   const opcionesPrerequisito = (epocas ?? []).filter(e => e.id !== epocaId)
 
@@ -59,18 +76,31 @@ function FormEpoca({ initial, epocas, epocaId, onGuardar, onCancelar }) {
     finally { setGuardando(false) }
   }
 
+  const nombreActivo = toMulti(form.nombre, idiomas)[idiomaActivo] ?? ''
+  const descripcionActivo = toMulti(form.descripcion, idiomas)[idiomaActivo] ?? ''
+  const briefingTextoActivo = toMulti(form.briefingTexto, idiomas)[idiomaActivo] ?? ''
+  const desenlaceTextoActivo = toMulti(form.desenlace?.texto, idiomas)[idiomaActivo] ?? ''
+
   return (
     <form onSubmit={submit} className="builder-form">
+      {/* ── Selector de idioma ───────────────────────────────────── */}
+      {idiomas.length > 1 && (
+        <div className="builder-form__idioma-bar">
+          <span className="builder-form__idioma-label">Editando en:</span>
+          <TabsIdioma idiomas={idiomas} activo={idiomaActivo} onChange={setIdiomaActivo} />
+        </div>
+      )}
+
       <div className="builder-form__section">
         <div className="form-grid-2">
           <div className="form__group">
             <label className="form__label">Nombre *</label>
             <input
               type="text"
-              value={form.nombre}
-              onChange={e => s('nombre', e.target.value)}
+              value={nombreActivo}
+              onChange={e => sMulti('nombre', e.target.value)}
               placeholder="Ej: La Era Romana"
-              required
+              required={idiomaActivo === (idiomas[0] ?? 'es')}
             />
           </div>
           <div className="form__group">
@@ -86,8 +116,8 @@ function FormEpoca({ initial, epocas, epocaId, onGuardar, onCancelar }) {
           <label className="form__label">Descripción</label>
           <textarea
             rows={2}
-            value={form.descripcion}
-            onChange={e => s('descripcion', e.target.value)}
+            value={descripcionActivo}
+            onChange={e => sMulti('descripcion', e.target.value)}
             placeholder="Contexto narrativo de la fase"
           />
         </div>
@@ -114,7 +144,7 @@ function FormEpoca({ initial, epocas, epocaId, onGuardar, onCancelar }) {
                   checked={(form.prerequisitos ?? []).includes(e.id)}
                   onChange={() => togglePrerequisito(e.id)}
                 />
-                <span>{e.nombre}</span>
+                <span>{getText(e.nombre, idiomas[0] ?? 'es') || '(sin nombre)'}</span>
               </label>
             ))}
           </div>
@@ -130,8 +160,8 @@ function FormEpoca({ initial, epocas, epocaId, onGuardar, onCancelar }) {
           <label className="form__label">Texto del briefing</label>
           <textarea
             rows={3}
-            value={form.briefingTexto}
-            onChange={e => s('briefingTexto', e.target.value)}
+            value={briefingTextoActivo}
+            onChange={e => sMulti('briefingTexto', e.target.value)}
             placeholder="Narración introductoria que verán los jugadores al inicio de la fase"
           />
         </div>
@@ -167,8 +197,8 @@ function FormEpoca({ initial, epocas, epocaId, onGuardar, onCancelar }) {
           <label className="form__label">Texto del desenlace</label>
           <textarea
             rows={3}
-            value={form.desenlace.texto}
-            onChange={e => sDesenlace('texto', e.target.value)}
+            value={desenlaceTextoActivo}
+            onChange={e => sDesenlaceMulti('texto', e.target.value)}
             placeholder="Narración final que verán los jugadores al completar la fase"
           />
         </div>
@@ -210,12 +240,14 @@ function FormEpoca({ initial, epocas, epocaId, onGuardar, onCancelar }) {
   )
 }
 
-export default function EpochBuilder({ experienciaId }) {
+export default function EpochBuilder({ experienciaId, idiomasDisponibles = ['es'] }) {
   const [epocas, setEpocas] = useState([])
   const [creando, setCreando] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
   const [expandidaId, setExpandidaId] = useState(null)
   const [confirmar, setConfirmar] = useState(null)
+
+  const idiomas = idiomasDisponibles.length > 0 ? idiomasDisponibles : ['es']
 
   useEffect(() => {
     return subscribeEpocas(experienciaId, (snap) => {
@@ -305,6 +337,7 @@ export default function EpochBuilder({ experienciaId }) {
       {creando && (
         <FormEpoca
           initial={EPOCA_VACIA}
+          idiomas={idiomas}
           epocas={epocas}
           epocaId={null}
           onGuardar={handleCrear}
@@ -340,7 +373,7 @@ export default function EpochBuilder({ experienciaId }) {
                   >↓</button>
                 </span>
                 <span className="builder-orden">{idx + 1}</span>
-                <strong>{epoca.nombre}</strong>
+                <strong>{getText(epoca.nombre, idiomas[0] ?? 'es') || '(sin nombre)'}</strong>
                 <span className={`tipo-badge tipo-badge--${epoca.tipo}`}>
                   {TIPOS[epoca.tipo] ?? epoca.tipo}
                 </span>
@@ -391,6 +424,7 @@ export default function EpochBuilder({ experienciaId }) {
             {editandoId === epoca.id && (
               <FormEpoca
                 initial={epoca}
+                idiomas={idiomas}
                 epocas={epocas}
                 epocaId={epoca.id}
                 onGuardar={(data, bf, dif) => handleEditar(epoca.id, data, bf, dif)}
@@ -400,7 +434,11 @@ export default function EpochBuilder({ experienciaId }) {
 
             {expandidaId === epoca.id && (
               <div className="builder-children">
-                <PointBuilder experienciaId={experienciaId} epocaId={epoca.id} />
+                <PointBuilder
+                  experienciaId={experienciaId}
+                  epocaId={epoca.id}
+                  idiomasDisponibles={idiomas}
+                />
               </div>
             )}
           </div>

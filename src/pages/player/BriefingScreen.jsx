@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useGame } from '../../context/GameContext'
+import { getText } from '../../utils/helpers'
 import {
   getProgresoEpoca,
   initProgresoEpoca,
@@ -14,6 +15,7 @@ import { db } from '../../services/firebase'
 export default function BriefingScreen() {
   const { epocaId } = useParams()
   const { game, setSesion } = useGame()
+  const idioma = game.idiomaElegido ?? 'es'
   const navigate = useNavigate()
   const [epoca, setEpoca] = useState(null)
   const [primerPunto, setPrimerPunto] = useState(null)
@@ -109,7 +111,7 @@ export default function BriefingScreen() {
           onClick={() => navigate('/jugador')}
           className="btn btn--ghost btn--small"
         >← Volver</button>
-        <h1 className="briefing__titulo">{epoca?.nombre}</h1>
+        <h1 className="briefing__titulo">{getText(epoca?.nombre, idioma)}</h1>
       </header>
 
       <div className="briefing__content">
@@ -124,9 +126,9 @@ export default function BriefingScreen() {
           </div>
         )}
 
-        {epoca?.briefingTexto && (
+        {getText(epoca?.briefingTexto, idioma) && (
           <div className="briefing__narrativa">
-            <p>{epoca.briefingTexto}</p>
+            <p>{getText(epoca.briefingTexto, idioma)}</p>
           </div>
         )}
 
@@ -148,8 +150,8 @@ export default function BriefingScreen() {
                 className="media-player"
               />
             )}
-            {primerPunto.pistaEntrada.texto && (
-              <p className="briefing__pista-texto">{primerPunto.pistaEntrada.texto}</p>
+            {getText(primerPunto.pistaEntrada.texto, idioma) && (
+              <p className="briefing__pista-texto">{getText(primerPunto.pistaEntrada.texto, idioma)}</p>
             )}
           </div>
         )}

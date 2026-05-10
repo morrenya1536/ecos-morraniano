@@ -282,3 +282,10 @@ export const subscribeGruposAll = (callback) =>
 
 export const resetearFase = (grupoId, equipoId, epocaId) =>
   deleteDoc(progresoDoc(grupoId, equipoId, epocaId))
+
+// ─── Idioma jugador ────────────────────────────────────────────────────────
+export const setIdiomaEquipo = (grupoId, equipoId, idioma) =>
+  updateDoc(doc(db, 'grupos', grupoId, 'equipos', equipoId), { idiomaElegido: idioma })
+
+export const setIdiomaGrupo = (grupoId, idioma) =>
+  updateDoc(doc(db, 'grupos', grupoId), { idiomaGrupo: idioma })

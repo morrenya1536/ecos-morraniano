@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useGame } from '../../context/GameContext'
+import { getText } from '../../utils/helpers'
 import {
   completarEpoca,
   getProgresoEpoca,
@@ -58,6 +59,7 @@ export default function EpochComplete() {
   const [otrosProgreso, setOtrosProgreso] = useState({})
   const [rankingData, setRankingData] = useState([])
 
+  const idioma = game.idiomaElegido ?? 'es'
   const isCompetitivo = game.grupoModo === 'competitivo' || !game.grupoModo
   const otrosEquipos = todosEquipos.filter(e => e.id !== game.equipoId)
 
@@ -214,9 +216,9 @@ export default function EpochComplete() {
         </div>
       )}
 
-      {desenlace?.texto && (
+      {getText(desenlace?.texto, idioma) && (
         <div className="epoch-complete__desenlace-texto">
-          <p>{desenlace.texto}</p>
+          <p>{getText(desenlace.texto, idioma)}</p>
         </div>
       )}
 
@@ -339,7 +341,7 @@ export default function EpochComplete() {
               : isLast
                 ? 'Finalizar experiencia'
                 : nextEpoca
-                  ? `Continuar: ${nextEpoca.nombre}`
+                  ? `Continuar: ${getText(nextEpoca.nombre, idioma)}`
                   : 'Volver al inicio'}
         </button>
       </div>

@@ -9,6 +9,7 @@ import {
   HTMLCanvasElementLuminanceSource,
 } from '@zxing/library'
 import { useGame } from '../../context/GameContext'
+import { getText } from '../../utils/helpers'
 import {
   subscribeProgresoEpoca,
   registrarAyuda,
@@ -309,7 +310,7 @@ function TabQR({ puntos, puntosCompletados, progreso, onPuntoConfirmado }) {
 }
 
 // ─── Tab Pistas ───────────────────────────────────────────────────────────────
-function TabPistas({ puntos, puntosCompletados, puntosEscaneados, puzzlesCompletados, experienciaId, epocaId, onPuntoConfirmado }) {
+function TabPistas({ puntos, puntosCompletados, puntosEscaneados, puzzlesCompletados, experienciaId, epocaId, idioma, onPuntoConfirmado }) {
   const [puntoPuzzles, setPuntoPuzzles] = useState({})
   const loadedRef = useRef(new Set())
   const completadosSet = new Set(puzzlesCompletados)
@@ -359,8 +360,8 @@ function TabPistas({ puntos, puntosCompletados, puntosEscaneados, puzzlesComplet
             {p.pistaEntrada?.videoUrl && (
               <video src={p.pistaEntrada.videoUrl} controls playsInline className="media-player" />
             )}
-            {p.pistaEntrada?.texto && (
-              <p className="pista-card__texto">{p.pistaEntrada.texto}</p>
+            {getText(p.pistaEntrada?.texto, idioma) && (
+              <p className="pista-card__texto">{getText(p.pistaEntrada.texto, idioma)}</p>
             )}
             {/* Puzzles: solo visibles tras escanear el QR del punto */}
             {(isDone || escaneado) && puzzles.length > 0 && (
@@ -373,9 +374,9 @@ function TabPistas({ puntos, puntosCompletados, puntosEscaneados, puzzlesComplet
                       key={pz.id}
                       className={`pista-puzzle ${pzDone || isDone ? 'pista-puzzle--completado' : 'pista-puzzle--activo'}`}
                     >
-                      <span className="pista-puzzle__enunciado">{pz.enunciado}</span>
-                      {(pzDone || isDone) && pz.respuestaCorrecta && (
-                        <span className="pista-puzzle__respuesta">→ {pz.respuestaCorrecta}</span>
+                      <span className="pista-puzzle__enunciado">{getText(pz.enunciado, idioma)}</span>
+                      {(pzDone || isDone) && getText(pz.respuestaCorrecta, idioma) && (
+                        <span className="pista-puzzle__respuesta">→ {getText(pz.respuestaCorrecta, idioma)}</span>
                       )}
                     </div>
                   )
@@ -677,7 +678,7 @@ function TabMapa({ puntos, puntosCompletados, zonaJuego }) {
 }
 
 // ─── Tab Ayuda ────────────────────────────────────────────────────────────────
-function TabAyuda({ puntos, puntosCompletados, puzzlesCompletados, progreso, epocaId, experienciaId, grupoId, equipoId }) {
+function TabAyuda({ puntos, puntosCompletados, puzzlesCompletados, progreso, epocaId, experienciaId, grupoId, equipoId, idioma }) {
   const pendingPunto = puntos.find(p => !puntosCompletados.includes(p.id))
   const [puzzles, setPuzzles] = useState([])
   const [mostradas, setMostradas] = useState({})
@@ -772,10 +773,10 @@ function TabAyuda({ puntos, puntosCompletados, puzzlesCompletados, progreso, epo
         return (
           <div className="ayuda-bloque">
             <p className="ayuda-bloque__titulo">
-              {pz.enunciado?.slice(0, 80)}{(pz.enunciado?.length ?? 0) > 80 ? '…' : ''}
+              {getText(pz.enunciado, idioma)?.slice(0, 80)}{(getText(pz.enunciado, idioma)?.length ?? 0) > 80 ? '…' : ''}
             </p>
             {[1, 2, 3].map(nivel => {
-              const texto = pz[`ayuda${nivel}`]
+              const texto = getText(pz[`ayuda${nivel}`], idioma)
               if (!texto) return null
               const visible = nivelMostrado >= nivel
               return (
@@ -863,6 +864,7 @@ export default function ActiveEpoch() {
   const [progreso, setProgreso] = useState(null)
   const [zonaJuego, setZonaJuego] = useState([])
 
+  const idioma = game.idiomaElegido ?? 'es'
   const equipoIdProgreso = game.grupoModo === 'colaborativo' && game.epocaConjunta
     ? 'conjunto'
     : game.equipoId
@@ -925,6 +927,7 @@ export default function ActiveEpoch() {
             puzzlesCompletados={puzzlesCompletados}
             experienciaId={game.experienciaId}
             epocaId={epocaId}
+            idioma={idioma}
             onPuntoConfirmado={handlePuntoConfirmado}
           />
         )}
@@ -949,6 +952,7 @@ export default function ActiveEpoch() {
             experienciaId={game.experienciaId}
             grupoId={game.grupoId}
             equipoId={equipoIdProgreso}
+            idioma={idioma}
           />
         )}
         {activeTab === 'tiempo' && (

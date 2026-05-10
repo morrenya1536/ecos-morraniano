@@ -6,6 +6,8 @@ import {
   deletePuzzle,
 } from '../../services/firestore'
 import { uploadImagen } from '../../services/storage'
+import { TabsIdioma, toMulti } from '../shared/TabsIdioma'
+import { getText } from '../../utils/helpers'
 
 const TIPOS_RESPUESTA = {
   numerica: 'Numérica',
@@ -79,12 +81,18 @@ const PUZZLE_VACIO = {
   secuencia: [],
 }
 
-function FormPuzzle({ initial, onGuardar, onCancelar }) {
+function FormPuzzle({ initial, idiomas, onGuardar, onCancelar }) {
   const [form, setForm] = useState(initial)
+  const [idiomaActivo, setIdiomaActivo] = useState(idiomas[0] ?? 'es')
   const [imagenFile, setImagenFile] = useState(null)
   const [imagenPreview, setImagenPreview] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const sMulti = (key, value) => setForm(f => ({
+    ...f,
+    [key]: { ...toMulti(f[key], idiomas), [idiomaActivo]: value },
+  }))
 
   const updatePaso = (i, key, val) => setForm(f => ({
     ...f,
@@ -114,8 +122,24 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
     finally { setGuardando(false) }
   }
 
+  const enunciadoActivo = toMulti(form.enunciado, idiomas)[idiomaActivo] ?? ''
+  const ayuda1Activo = toMulti(form.ayuda1, idiomas)[idiomaActivo] ?? ''
+  const ayuda2Activo = toMulti(form.ayuda2, idiomas)[idiomaActivo] ?? ''
+  const ayuda3Activo = toMulti(form.ayuda3, idiomas)[idiomaActivo] ?? ''
+  const respuestaMultiActivo = form.tipoRespuesta === 'texto_libre'
+    ? (toMulti(form.respuestaCorrecta, idiomas)[idiomaActivo] ?? '')
+    : null
+
   return (
     <form onSubmit={submit} className="builder-form">
+
+      {/* ── Selector de idioma ───────────────────────────────────── */}
+      {idiomas.length > 1 && (
+        <div className="builder-form__idioma-bar">
+          <span className="builder-form__idioma-label">Editando en:</span>
+          <TabsIdioma idiomas={idiomas} activo={idiomaActivo} onChange={setIdiomaActivo} />
+        </div>
+      )}
 
       {/* ── Contenido ───────────────────────────────────────────── */}
       <div className="builder-form__section">
@@ -124,10 +148,10 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
           <label className="form__label">Enunciado *</label>
           <textarea
             rows={3}
-            value={form.enunciado}
-            onChange={e => s('enunciado', e.target.value)}
+            value={enunciadoActivo}
+            onChange={e => sMulti('enunciado', e.target.value)}
             placeholder="Pregunta o reto que deben resolver los jugadores"
-            required
+            required={idiomaActivo === (idiomas[0] ?? 'es')}
           />
         </div>
         <div className="form__group">
@@ -175,11 +199,26 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
               ))}
             </select>
           </div>
-          <CampoRespuesta
-            tipo={form.tipoRespuesta}
-            valor={form.respuestaCorrecta}
-            onChange={v => s('respuestaCorrecta', v)}
-          />
+          {form.tipoRespuesta === 'texto_libre' ? (
+            <div className="form__group">
+              <label className="form__label">Respuesta correcta</label>
+              <input
+                type="text"
+                value={respuestaMultiActivo}
+                onChange={e => setForm(f => ({
+                  ...f,
+                  respuestaCorrecta: { ...toMulti(f.respuestaCorrecta, idiomas), [idiomaActivo]: e.target.value },
+                }))}
+                placeholder="respuesta..."
+              />
+            </div>
+          ) : (
+            <CampoRespuesta
+              tipo={form.tipoRespuesta}
+              valor={typeof form.respuestaCorrecta === 'string' ? form.respuestaCorrecta : (getText(form.respuestaCorrecta, idiomas[0]) ?? '')}
+              onChange={v => s('respuestaCorrecta', v)}
+            />
+          )}
         </div>
       </div>
 
@@ -263,8 +302,8 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
           <label className="form__label">Ayuda nivel 1 <span className="text-muted">(sin penalización)</span></label>
           <textarea
             rows={2}
-            value={form.ayuda1}
-            onChange={e => s('ayuda1', e.target.value)}
+            value={ayuda1Activo}
+            onChange={e => sMulti('ayuda1', e.target.value)}
             placeholder="Pista suave"
           />
         </div>
@@ -272,8 +311,8 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
           <label className="form__label">Ayuda nivel 2 <span className="text-muted">(sin penalización)</span></label>
           <textarea
             rows={2}
-            value={form.ayuda2}
-            onChange={e => s('ayuda2', e.target.value)}
+            value={ayuda2Activo}
+            onChange={e => sMulti('ayuda2', e.target.value)}
             placeholder="Pista más directa"
           />
         </div>
@@ -281,8 +320,8 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
           <label className="form__label">Ayuda nivel 3 <span className="text-muted">(con penalización)</span></label>
           <textarea
             rows={2}
-            value={form.ayuda3}
-            onChange={e => s('ayuda3', e.target.value)}
+            value={ayuda3Activo}
+            onChange={e => sMulti('ayuda3', e.target.value)}
             placeholder="Pista que revela casi la solución"
           />
         </div>
@@ -342,7 +381,8 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
   )
 }
 
-export default function PuzzleBuilder({ experienciaId, epocaId, puntoId }) {
+export default function PuzzleBuilder({ experienciaId, epocaId, puntoId, idiomasDisponibles = ['es'] }) {
+  const idiomas = idiomasDisponibles.length > 0 ? idiomasDisponibles : ['es']
   const [puzzles, setPuzzles] = useState([])
   const [creando, setCreando] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
@@ -416,6 +456,7 @@ export default function PuzzleBuilder({ experienciaId, epocaId, puntoId }) {
       {creando && (
         <FormPuzzle
           initial={PUZZLE_VACIO}
+          idiomas={idiomas}
           onGuardar={handleCrear}
           onCancelar={() => setCreando(false)}
         />
@@ -447,7 +488,7 @@ export default function PuzzleBuilder({ experienciaId, epocaId, puntoId }) {
                   >↓</button>
                 </span>
                 <span className="builder-orden">{idx + 1}</span>
-                <span className="puzzle-enunciado">{puzzle.enunciado || '(sin enunciado)'}</span>
+                <span className="puzzle-enunciado">{getText(puzzle.enunciado, idiomas[0] ?? 'es') || '(sin enunciado)'}</span>
                 <span className={`tipo-badge tipo-badge--${puzzle.tipoRespuesta}`}>
                   {TIPOS_RESPUESTA[puzzle.tipoRespuesta] ?? puzzle.tipoRespuesta}
                 </span>
@@ -490,6 +531,7 @@ export default function PuzzleBuilder({ experienciaId, epocaId, puntoId }) {
             {editandoId === puzzle.id && (
               <FormPuzzle
                 initial={{ ...PUZZLE_VACIO, ...puzzle }}
+                idiomas={idiomas}
                 onGuardar={(data, file) => handleEditar(puzzle.id, data, file)}
                 onCancelar={() => setEditandoId(null)}
               />
