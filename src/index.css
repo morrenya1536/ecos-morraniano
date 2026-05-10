@@ -2163,45 +2163,6 @@ select option { background: var(--color-surface); }
   color: var(--color-error);
 }
 
-/* ── Multiidioma: selector de idioma en formularios builder ── */
-.tabs-idioma {
-  display: flex;
-  gap: 4px;
-}
-.tabs-idioma__btn {
-  padding: 4px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.tabs-idioma__btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--color-text);
-}
-.tabs-idioma__btn--active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: #fff;
-}
-
-.builder-form__idioma-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0 4px;
-  border-bottom: 1px solid var(--color-border);
-  margin-bottom: 4px;
-}
-.builder-form__idioma-label {
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-
 /* ── Multiidioma: selector idiomas en ExperienceBuilder ── */
 .idiomas-selector {
   display: flex;

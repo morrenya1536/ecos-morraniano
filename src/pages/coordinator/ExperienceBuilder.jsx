@@ -9,8 +9,10 @@ import {
 import { uploadImagen } from '../../services/storage'
 import LoadingScreen from '../../components/shared/LoadingScreen'
 import EpochBuilder from '../../components/coordinator/EpochBuilder'
+import { CampoTraducible } from '../../components/shared/CampoTraducible'
+import { getText } from '../../utils/helpers'
 
-const FORM_VACIO = { nombre: '', descripcion: '', activa: false }
+const FORM_VACIO = { nombre: {}, descripcion: {}, activa: false }
 const TODOS_IDIOMAS = ['es', 'ca', 'en']
 const IDIOMA_NOMBRE = { es: 'Castellano (ES)', ca: 'Català (CA)', en: 'English (EN)' }
 
@@ -42,8 +44,8 @@ export default function ExperienceBuilder() {
       if (!snap.exists()) { navigate('/coordinador', { replace: true }); return }
       const d = snap.data()
       setForm({
-        nombre: d.nombre ?? '',
-        descripcion: d.descripcion ?? '',
+        nombre: d.nombre ?? {},
+        descripcion: d.descripcion ?? {},
         activa: d.activa ?? false,
       })
       setImagenUrlActual(d.imagenPortadaUrl ?? null)
@@ -96,7 +98,7 @@ export default function ExperienceBuilder() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!form.nombre.trim()) return
+    if (!getText(form.nombre, idiomasDisponibles[0]).trim()) return
     setError(null)
     setGuardando(true)
     try {
@@ -149,26 +151,24 @@ export default function ExperienceBuilder() {
 
       {/* ── Formulario de info básica ─────────────────────────────── */}
       <form onSubmit={handleSubmit} className="form form--builder">
-        <div className="form__group">
-          <label className="form__label">Nombre *</label>
-          <input
-            type="text"
-            value={form.nombre}
-            onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-            placeholder="Ej: Els Ecos de Morraniano"
-            required
-          />
-        </div>
+        <CampoTraducible
+          label="Nombre"
+          campo={form.nombre}
+          onChange={v => setForm(f => ({ ...f, nombre: v }))}
+          idiomas={idiomasDisponibles}
+          placeholder="Ej: Els Ecos de Morraniano"
+          required
+        />
 
-        <div className="form__group">
-          <label className="form__label">Descripción</label>
-          <textarea
-            value={form.descripcion}
-            onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
-            placeholder="Descripción breve de la experiencia"
-            rows={3}
-          />
-        </div>
+        <CampoTraducible
+          label="Descripción"
+          campo={form.descripcion}
+          onChange={v => setForm(f => ({ ...f, descripcion: v }))}
+          idiomas={idiomasDisponibles}
+          tipo="textarea"
+          rows={3}
+          placeholder="Descripción breve de la experiencia"
+        />
 
         <div className="form__group">
           <label className="form__label">Imagen de portada</label>

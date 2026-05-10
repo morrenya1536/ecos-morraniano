@@ -6,7 +6,7 @@ import {
   deletePuzzle,
 } from '../../services/firestore'
 import { uploadImagen } from '../../services/storage'
-import { TabsIdioma, toMulti } from '../shared/TabsIdioma'
+import { CampoTraducible } from '../shared/CampoTraducible'
 import { getText } from '../../utils/helpers'
 
 const TIPOS_RESPUESTA = {
@@ -83,16 +83,10 @@ const PUZZLE_VACIO = {
 
 function FormPuzzle({ initial, idiomas, onGuardar, onCancelar }) {
   const [form, setForm] = useState(initial)
-  const [idiomaActivo, setIdiomaActivo] = useState(idiomas[0] ?? 'es')
   const [imagenFile, setImagenFile] = useState(null)
   const [imagenPreview, setImagenPreview] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  const sMulti = (key, value) => setForm(f => ({
-    ...f,
-    [key]: { ...toMulti(f[key], idiomas), [idiomaActivo]: value },
-  }))
 
   const updatePaso = (i, key, val) => setForm(f => ({
     ...f,
@@ -122,38 +116,22 @@ function FormPuzzle({ initial, idiomas, onGuardar, onCancelar }) {
     finally { setGuardando(false) }
   }
 
-  const enunciadoActivo = toMulti(form.enunciado, idiomas)[idiomaActivo] ?? ''
-  const ayuda1Activo = toMulti(form.ayuda1, idiomas)[idiomaActivo] ?? ''
-  const ayuda2Activo = toMulti(form.ayuda2, idiomas)[idiomaActivo] ?? ''
-  const ayuda3Activo = toMulti(form.ayuda3, idiomas)[idiomaActivo] ?? ''
-  const respuestaMultiActivo = form.tipoRespuesta === 'texto_libre'
-    ? (toMulti(form.respuestaCorrecta, idiomas)[idiomaActivo] ?? '')
-    : null
-
   return (
     <form onSubmit={submit} className="builder-form">
-
-      {/* ── Selector de idioma ───────────────────────────────────── */}
-      {idiomas.length > 1 && (
-        <div className="builder-form__idioma-bar">
-          <span className="builder-form__idioma-label">Editando en:</span>
-          <TabsIdioma idiomas={idiomas} activo={idiomaActivo} onChange={setIdiomaActivo} />
-        </div>
-      )}
 
       {/* ── Contenido ───────────────────────────────────────────── */}
       <div className="builder-form__section">
         <p className="builder-form__section-title">Contenido del puzzle</p>
-        <div className="form__group">
-          <label className="form__label">Enunciado *</label>
-          <textarea
-            rows={3}
-            value={enunciadoActivo}
-            onChange={e => sMulti('enunciado', e.target.value)}
-            placeholder="Pregunta o reto que deben resolver los jugadores"
-            required={idiomaActivo === (idiomas[0] ?? 'es')}
-          />
-        </div>
+        <CampoTraducible
+          label="Enunciado"
+          campo={form.enunciado}
+          onChange={v => s('enunciado', v)}
+          idiomas={idiomas}
+          tipo="textarea"
+          rows={3}
+          placeholder="Pregunta o reto que deben resolver los jugadores"
+          required
+        />
         <div className="form__group">
           <label className="form__label">Texto adicional</label>
           <textarea
@@ -190,36 +168,29 @@ function FormPuzzle({ initial, idiomas, onGuardar, onCancelar }) {
             />
           </div>
         </div>
-        <div className="form-grid-2">
-          <div className="form__group">
-            <label className="form__label">Tipo de respuesta</label>
-            <select value={form.tipoRespuesta} onChange={e => s('tipoRespuesta', e.target.value)}>
-              {Object.entries(TIPOS_RESPUESTA).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
-              ))}
-            </select>
-          </div>
-          {form.tipoRespuesta === 'texto_libre' ? (
-            <div className="form__group">
-              <label className="form__label">Respuesta correcta</label>
-              <input
-                type="text"
-                value={respuestaMultiActivo}
-                onChange={e => setForm(f => ({
-                  ...f,
-                  respuestaCorrecta: { ...toMulti(f.respuestaCorrecta, idiomas), [idiomaActivo]: e.target.value },
-                }))}
-                placeholder="respuesta..."
-              />
-            </div>
-          ) : (
-            <CampoRespuesta
-              tipo={form.tipoRespuesta}
-              valor={typeof form.respuestaCorrecta === 'string' ? form.respuestaCorrecta : (getText(form.respuestaCorrecta, idiomas[0]) ?? '')}
-              onChange={v => s('respuestaCorrecta', v)}
-            />
-          )}
+        <div className="form__group">
+          <label className="form__label">Tipo de respuesta</label>
+          <select value={form.tipoRespuesta} onChange={e => s('tipoRespuesta', e.target.value)}>
+            {Object.entries(TIPOS_RESPUESTA).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
         </div>
+        {form.tipoRespuesta === 'texto_libre' ? (
+          <CampoTraducible
+            label="Respuesta correcta"
+            campo={form.respuestaCorrecta}
+            onChange={v => s('respuestaCorrecta', v)}
+            idiomas={idiomas}
+            placeholder="respuesta..."
+          />
+        ) : (
+          <CampoRespuesta
+            tipo={form.tipoRespuesta}
+            valor={typeof form.respuestaCorrecta === 'string' ? form.respuestaCorrecta : (getText(form.respuestaCorrecta, idiomas[0]) ?? '')}
+            onChange={v => s('respuestaCorrecta', v)}
+          />
+        )}
       </div>
 
       {/* ── Secuencia colaborativa ──────────────────────────────── */}
@@ -298,33 +269,34 @@ function FormPuzzle({ initial, idiomas, onGuardar, onCancelar }) {
       {/* ── Ayudas ──────────────────────────────────────────────── */}
       <div className="builder-form__section">
         <p className="builder-form__section-title">Ayudas</p>
-        <div className="form__group">
-          <label className="form__label">Ayuda nivel 1 <span className="text-muted">(sin penalización)</span></label>
-          <textarea
-            rows={2}
-            value={ayuda1Activo}
-            onChange={e => sMulti('ayuda1', e.target.value)}
-            placeholder="Pista suave"
-          />
-        </div>
-        <div className="form__group">
-          <label className="form__label">Ayuda nivel 2 <span className="text-muted">(sin penalización)</span></label>
-          <textarea
-            rows={2}
-            value={ayuda2Activo}
-            onChange={e => sMulti('ayuda2', e.target.value)}
-            placeholder="Pista más directa"
-          />
-        </div>
-        <div className="form__group">
-          <label className="form__label">Ayuda nivel 3 <span className="text-muted">(con penalización)</span></label>
-          <textarea
-            rows={2}
-            value={ayuda3Activo}
-            onChange={e => sMulti('ayuda3', e.target.value)}
-            placeholder="Pista que revela casi la solución"
-          />
-        </div>
+        <p className="builder-form__section-help">Nivel 1 y 2 sin penalización. Nivel 3 con penalización de tiempo.</p>
+        <CampoTraducible
+          label="Ayuda nivel 1"
+          campo={form.ayuda1}
+          onChange={v => s('ayuda1', v)}
+          idiomas={idiomas}
+          tipo="textarea"
+          rows={2}
+          placeholder="Pista suave"
+        />
+        <CampoTraducible
+          label="Ayuda nivel 2"
+          campo={form.ayuda2}
+          onChange={v => s('ayuda2', v)}
+          idiomas={idiomas}
+          tipo="textarea"
+          rows={2}
+          placeholder="Pista más directa"
+        />
+        <CampoTraducible
+          label="Ayuda nivel 3"
+          campo={form.ayuda3}
+          onChange={v => s('ayuda3', v)}
+          idiomas={idiomas}
+          tipo="textarea"
+          rows={2}
+          placeholder="Pista que revela casi la solución"
+        />
         <div className="form__group" style={{ maxWidth: '200px' }}>
           <label className="form__label">Penalización ayuda 3 (minutos)</label>
           <input

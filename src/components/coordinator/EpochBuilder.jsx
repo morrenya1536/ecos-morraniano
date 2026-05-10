@@ -6,7 +6,7 @@ import {
   deleteEpoca,
 } from '../../services/firestore'
 import { uploadImagen } from '../../services/storage'
-import { TabsIdioma, toMulti } from '../shared/TabsIdioma'
+import { CampoTraducible } from '../shared/CampoTraducible'
 import { getText } from '../../utils/helpers'
 import PointBuilder from './PointBuilder'
 
@@ -36,26 +36,12 @@ function FormEpoca({ initial, idiomas, epocas, epocaId, onGuardar, onCancelar })
     desenlace: initial.desenlace ?? DESENLACE_VACIO,
     prerequisitos: initial.prerequisitos ?? [],
   })
-  const [idiomaActivo, setIdiomaActivo] = useState(idiomas[0] ?? 'es')
   const [videoFile, setVideoFile] = useState(null)
   const [desenlaceImagenFile, setDesenlaceImagenFile] = useState(null)
   const [guardando, setGuardando] = useState(false)
 
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const sDesenlace = (k, v) => setForm(f => ({ ...f, desenlace: { ...f.desenlace, [k]: v } }))
-
-  // Editar un campo multiidioma en el idioma activo
-  const sMulti = (key, value) => setForm(f => ({
-    ...f,
-    [key]: { ...toMulti(f[key], idiomas), [idiomaActivo]: value },
-  }))
-  const sDesenlaceMulti = (key, value) => setForm(f => ({
-    ...f,
-    desenlace: {
-      ...f.desenlace,
-      [key]: { ...toMulti(f.desenlace?.[key], idiomas), [idiomaActivo]: value },
-    },
-  }))
 
   const opcionesPrerequisito = (epocas ?? []).filter(e => e.id !== epocaId)
 
@@ -76,33 +62,19 @@ function FormEpoca({ initial, idiomas, epocas, epocaId, onGuardar, onCancelar })
     finally { setGuardando(false) }
   }
 
-  const nombreActivo = toMulti(form.nombre, idiomas)[idiomaActivo] ?? ''
-  const descripcionActivo = toMulti(form.descripcion, idiomas)[idiomaActivo] ?? ''
-  const briefingTextoActivo = toMulti(form.briefingTexto, idiomas)[idiomaActivo] ?? ''
-  const desenlaceTextoActivo = toMulti(form.desenlace?.texto, idiomas)[idiomaActivo] ?? ''
-
   return (
     <form onSubmit={submit} className="builder-form">
-      {/* ── Selector de idioma ───────────────────────────────────── */}
-      {idiomas.length > 1 && (
-        <div className="builder-form__idioma-bar">
-          <span className="builder-form__idioma-label">Editando en:</span>
-          <TabsIdioma idiomas={idiomas} activo={idiomaActivo} onChange={setIdiomaActivo} />
-        </div>
-      )}
 
       <div className="builder-form__section">
+        <CampoTraducible
+          label="Nombre"
+          campo={form.nombre}
+          onChange={v => s('nombre', v)}
+          idiomas={idiomas}
+          placeholder="Ej: La Era Romana"
+          required
+        />
         <div className="form-grid-2">
-          <div className="form__group">
-            <label className="form__label">Nombre *</label>
-            <input
-              type="text"
-              value={nombreActivo}
-              onChange={e => sMulti('nombre', e.target.value)}
-              placeholder="Ej: La Era Romana"
-              required={idiomaActivo === (idiomas[0] ?? 'es')}
-            />
-          </div>
           <div className="form__group">
             <label className="form__label">Tipo predominante</label>
             <select value={form.tipo} onChange={e => s('tipo', e.target.value)}>
@@ -111,23 +83,23 @@ function FormEpoca({ initial, idiomas, epocas, epocaId, onGuardar, onCancelar })
               ))}
             </select>
           </div>
+          <div className="form__group form__group--row">
+            <label className="form__label">¿Fase conjunta? <span className="text-muted">(todos los equipos juntos)</span></label>
+            <label className="toggle">
+              <input type="checkbox" checked={form.conjunta} onChange={e => s('conjunta', e.target.checked)} />
+              <span className="toggle__slider" />
+            </label>
+          </div>
         </div>
-        <div className="form__group">
-          <label className="form__label">Descripción</label>
-          <textarea
-            rows={2}
-            value={descripcionActivo}
-            onChange={e => sMulti('descripcion', e.target.value)}
-            placeholder="Contexto narrativo de la fase"
-          />
-        </div>
-        <div className="form__group form__group--row">
-          <label className="form__label">¿Fase conjunta? <span className="text-muted">(todos los equipos juntos)</span></label>
-          <label className="toggle">
-            <input type="checkbox" checked={form.conjunta} onChange={e => s('conjunta', e.target.checked)} />
-            <span className="toggle__slider" />
-          </label>
-        </div>
+        <CampoTraducible
+          label="Descripción"
+          campo={form.descripcion}
+          onChange={v => s('descripcion', v)}
+          idiomas={idiomas}
+          tipo="textarea"
+          rows={2}
+          placeholder="Contexto narrativo de la fase"
+        />
       </div>
 
       {opcionesPrerequisito.length > 0 && (
@@ -156,15 +128,15 @@ function FormEpoca({ initial, idiomas, epocas, epocaId, onGuardar, onCancelar })
 
       <div className="builder-form__section">
         <p className="builder-form__section-title">Briefing</p>
-        <div className="form__group">
-          <label className="form__label">Texto del briefing</label>
-          <textarea
-            rows={3}
-            value={briefingTextoActivo}
-            onChange={e => sMulti('briefingTexto', e.target.value)}
-            placeholder="Narración introductoria que verán los jugadores al inicio de la fase"
-          />
-        </div>
+        <CampoTraducible
+          label="Texto del briefing"
+          campo={form.briefingTexto}
+          onChange={v => s('briefingTexto', v)}
+          idiomas={idiomas}
+          tipo="textarea"
+          rows={3}
+          placeholder="Narración introductoria que verán los jugadores al inicio de la fase"
+        />
         <div className="form-grid-2">
           <div className="form__group">
             <label className="form__label">URL del vídeo de briefing</label>
@@ -193,15 +165,15 @@ function FormEpoca({ initial, idiomas, epocas, epocaId, onGuardar, onCancelar })
         <p className="builder-form__section-help">
           Este contenido se muestra al jugador cuando completa todos los puntos y puzzles de la época.
         </p>
-        <div className="form__group">
-          <label className="form__label">Texto del desenlace</label>
-          <textarea
-            rows={3}
-            value={desenlaceTextoActivo}
-            onChange={e => sDesenlaceMulti('texto', e.target.value)}
-            placeholder="Narración final que verán los jugadores al completar la fase"
-          />
-        </div>
+        <CampoTraducible
+          label="Texto del desenlace"
+          campo={form.desenlace?.texto}
+          onChange={v => sDesenlace('texto', v)}
+          idiomas={idiomas}
+          tipo="textarea"
+          rows={3}
+          placeholder="Narración final que verán los jugadores al completar la fase"
+        />
         <div className="form-grid-2">
           <div className="form__group">
             <label className="form__label">URL del vídeo del desenlace</label>

@@ -7,7 +7,7 @@ import {
   deletePunto,
 } from '../../services/firestore'
 import { uploadImagen } from '../../services/storage'
-import { TabsIdioma, toMulti } from '../shared/TabsIdioma'
+import { CampoTraducible } from '../shared/CampoTraducible'
 import PuzzleBuilder from './PuzzleBuilder'
 
 const TIPOS_PUNTO = {
@@ -29,18 +29,12 @@ const PUNTO_VACIO = {
 
 function FormPunto({ initial, idiomas, onGuardar, onCancelar }) {
   const [form, setForm] = useState(initial)
-  const [idiomaActivo, setIdiomaActivo] = useState(idiomas[0] ?? 'es')
   const [llegadaFile, setLlegadaFile] = useState(null)
   const [llegadaPreview, setLlegadaPreview] = useState(null)
   const [pistaFile, setPistaFile] = useState(null)
   const [pistaPreview, setPistaPreview] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  const sMulti = (key, value) => setForm(f => ({
-    ...f,
-    [key]: { ...toMulti(f[key], idiomas), [idiomaActivo]: value },
-  }))
 
   const handleLlegadaImagen = (e) => {
     const file = e.target.files[0]
@@ -63,19 +57,8 @@ function FormPunto({ initial, idiomas, onGuardar, onCancelar }) {
     finally { setGuardando(false) }
   }
 
-  const pistaTextoActivo = toMulti(form.pistaEntradaTexto, idiomas)[idiomaActivo] ?? ''
-  const llegadaTextoActivo = toMulti(form.llegadaTexto, idiomas)[idiomaActivo] ?? ''
-
   return (
     <form onSubmit={submit} className="builder-form">
-
-      {/* ── Selector de idioma ───────────────────────────────────── */}
-      {idiomas.length > 1 && (
-        <div className="builder-form__idioma-bar">
-          <span className="builder-form__idioma-label">Editando en:</span>
-          <TabsIdioma idiomas={idiomas} activo={idiomaActivo} onChange={setIdiomaActivo} />
-        </div>
-      )}
 
       {/* ── Datos generales ──────────────────────────────────────── */}
       <div className="builder-form__section">
@@ -130,15 +113,15 @@ function FormPunto({ initial, idiomas, onGuardar, onCancelar }) {
           Esta pista se muestra al jugador cuando se desbloquea este punto.
           Para el primer punto de la fase, es la pista inicial que reciben en el briefing.
         </p>
-        <div className="form__group">
-          <label className="form__label">Texto de la pista</label>
-          <textarea
-            rows={3}
-            value={pistaTextoActivo}
-            onChange={e => sMulti('pistaEntradaTexto', e.target.value)}
-            placeholder="Descripción, acertijo o indicación para llegar a este punto"
-          />
-        </div>
+        <CampoTraducible
+          label="Texto de la pista"
+          campo={form.pistaEntradaTexto}
+          onChange={v => s('pistaEntradaTexto', v)}
+          idiomas={idiomas}
+          tipo="textarea"
+          rows={3}
+          placeholder="Descripción, acertijo o indicación para llegar a este punto"
+        />
         <div className="form-grid-2">
           <div className="form__group">
             <label className="form__label">URL del vídeo</label>
@@ -171,15 +154,15 @@ function FormPunto({ initial, idiomas, onGuardar, onCancelar }) {
       {/* ── Contenido de llegada ──────────────────────────────────── */}
       <div className="builder-form__section">
         <p className="builder-form__section-title">Contenido de llegada</p>
-        <div className="form__group">
-          <label className="form__label">Texto de llegada</label>
-          <textarea
-            rows={3}
-            value={llegadaTextoActivo}
-            onChange={e => sMulti('llegadaTexto', e.target.value)}
-            placeholder="Texto o narración que verán los jugadores al llegar al punto"
-          />
-        </div>
+        <CampoTraducible
+          label="Texto de llegada"
+          campo={form.llegadaTexto}
+          onChange={v => s('llegadaTexto', v)}
+          idiomas={idiomas}
+          tipo="textarea"
+          rows={3}
+          placeholder="Texto o narración que verán los jugadores al llegar al punto"
+        />
         <div className="form__group">
           <label className="form__label">URL del vídeo de llegada</label>
           <input
