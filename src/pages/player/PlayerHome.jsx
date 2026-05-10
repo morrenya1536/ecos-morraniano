@@ -214,13 +214,43 @@ export default function PlayerHome() {
     return result
   }, [grupoModo, epocas, faseAsignadaId, todasFasesAsignadasCompletadas])
 
+  const isPrerequisitoCumplido = (prereqId) => {
+    if (progresos[prereqId]?.estado === 'completado') return true
+    if (grupoModo === 'colaborativo') {
+      for (const [eqId, prog] of Object.entries(otrosEquiposProgreso)) {
+        const equipo = todosEquipos.find(e => e.id === eqId)
+        if (equipo?.epocaAsignadaId === prereqId && prog?.estado === 'completado') return true
+      }
+    }
+    return false
+  }
+
+  const getMensajeBloqueo = (fase) => {
+    const prereqs = fase.prerequisitos ?? []
+    const pendientes = prereqs.filter(id => !isPrerequisitoCumplido(id))
+    if (pendientes.length > 0) {
+      const nombres = pendientes
+        .map(id => epocas.find(e => e.id === id)?.nombre ?? id)
+        .join(', ')
+      return `Completa primero: ${nombres}`
+    }
+    if (fase.conjunta) return 'Se desbloqueará cuando todos los equipos completen sus fases.'
+    return 'Completa tu fase asignada primero.'
+  }
+
   const getEstado = (fase) => {
     const prog = progresos[fase.id]
     if (prog?.estado === 'completado') return 'completada'
     if (prog?.estado === 'activo' || prog?.estado === 'pausado') return 'activa'
+
+    const prereqs = fase.prerequisitos ?? []
+    if (prereqs.length > 0 && prereqs.some(id => !isPrerequisitoCumplido(id))) {
+      return 'bloqueada'
+    }
+
     if (!grupoModo) {
       // Legacy sequential
-      const idx = epocas.indexOf(fase)
+      const idx = epocas.findIndex(e => e.id === fase.id)
       if (idx === 0) return 'disponible'
       return progresos[epocas[idx - 1]?.id]?.estado === 'completado' ? 'disponible' : 'bloqueada'
     }
@@ -300,9 +330,7 @@ export default function PlayerHome() {
                   )}
                   {estado === 'bloqueada' && (
                     <p className="epoca-card__bloqueo">
-                      {fase.conjunta
-                        ? 'Se desbloqueará cuando todos los equipos completen sus fases.'
-                        : 'Completa tu fase asignada primero.'}
+                      {getMensajeBloqueo(fase)}
                     </p>
                   )}
                   {estado !== 'bloqueada' && fase.descripcion && (

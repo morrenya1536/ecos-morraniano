@@ -25,18 +25,32 @@ const EPOCA_VACIA = {
   briefingTexto: '',
   briefingVideoUrl: '',
   desenlace: DESENLACE_VACIO,
+  prerequisitos: [],
 }
 
-function FormEpoca({ initial, onGuardar, onCancelar }) {
+function FormEpoca({ initial, epocas, epocaId, onGuardar, onCancelar }) {
   const [form, setForm] = useState({
     ...initial,
     desenlace: initial.desenlace ?? DESENLACE_VACIO,
+    prerequisitos: initial.prerequisitos ?? [],
   })
   const [videoFile, setVideoFile] = useState(null)
   const [desenlaceImagenFile, setDesenlaceImagenFile] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const sDesenlace = (k, v) => setForm(f => ({ ...f, desenlace: { ...f.desenlace, [k]: v } }))
+
+  const opcionesPrerequisito = (epocas ?? []).filter(e => e.id !== epocaId)
+
+  const togglePrerequisito = (id) => {
+    setForm(f => {
+      const prev = f.prerequisitos ?? []
+      return {
+        ...f,
+        prerequisitos: prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
+      }
+    })
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -85,6 +99,30 @@ function FormEpoca({ initial, onGuardar, onCancelar }) {
           </label>
         </div>
       </div>
+
+      {opcionesPrerequisito.length > 0 && (
+        <div className="builder-form__section">
+          <p className="builder-form__section-title">Prerequisitos</p>
+          <p className="builder-form__section-help">
+            Esta fase se desbloquea cuando se completen:
+          </p>
+          <div className="prerequisitos-lista">
+            {opcionesPrerequisito.map(e => (
+              <label key={e.id} className="prerequisito-item">
+                <input
+                  type="checkbox"
+                  checked={(form.prerequisitos ?? []).includes(e.id)}
+                  onChange={() => togglePrerequisito(e.id)}
+                />
+                <span>{e.nombre}</span>
+              </label>
+            ))}
+          </div>
+          {(form.prerequisitos ?? []).length === 0 && (
+            <p className="form__hint">Sin prerequisitos: la fase estará disponible desde el inicio.</p>
+          )}
+        </div>
+      )}
 
       <div className="builder-form__section">
         <p className="builder-form__section-title">Briefing</p>
@@ -267,6 +305,8 @@ export default function EpochBuilder({ experienciaId }) {
       {creando && (
         <FormEpoca
           initial={EPOCA_VACIA}
+          epocas={epocas}
+          epocaId={null}
           onGuardar={handleCrear}
           onCancelar={() => setCreando(false)}
         />
@@ -351,6 +391,8 @@ export default function EpochBuilder({ experienciaId }) {
             {editandoId === epoca.id && (
               <FormEpoca
                 initial={epoca}
+                epocas={epocas}
+                epocaId={epoca.id}
                 onGuardar={(data, bf, dif) => handleEditar(epoca.id, data, bf, dif)}
                 onCancelar={() => setEditandoId(null)}
               />

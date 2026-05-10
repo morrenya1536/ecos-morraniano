@@ -151,10 +151,106 @@ function QRPuzzleInput({ respuestaCorrecta, onCorrecto }) {
   )
 }
 
+// ─── Input para un paso de secuencia ─────────────────────────────────────────
+function PasoInput({ paso, onCorrecto }) {
+  const [respuesta, setRespuesta] = useState('')
+  const [error, setError] = useState(null)
+
+  if (paso.tipo === 'escanear_qr') {
+    return <QRPuzzleInput respuestaCorrecta={paso.respuestaCorrecta} onCorrecto={onCorrecto} />
+  }
+
+  const submit = (e) => {
+    e.preventDefault()
+    if (normalizar(respuesta) === normalizar(paso.respuestaCorrecta)) {
+      onCorrecto()
+    } else {
+      setError('Respuesta incorrecta, inténtalo de nuevo.')
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="puzzle-form">
+      <div className="form__group">
+        <input
+          type={paso.tipo === 'numerica' ? 'number' : 'text'}
+          value={respuesta}
+          onChange={e => { setRespuesta(e.target.value); setError(null) }}
+          placeholder="Tu respuesta..."
+          className="puzzle-input"
+          autoFocus
+        />
+      </div>
+      {error && <p className="form__error">{error}</p>}
+      <button type="submit" className="btn btn--primary" disabled={!respuesta.trim()}>
+        Confirmar
+      </button>
+    </form>
+  )
+}
+
+// ─── Secuencia colaborativa ordenada ─────────────────────────────────────────
+function SecuenciaColaborativa({ secuencia, onCorrecto }) {
+  const [pasoActual, setPasoActual] = useState(0)
+  const [countdown, setCountdown] = useState(null)
+  const [mensaje, setMensaje] = useState(null)
+
+  useEffect(() => {
+    if (countdown === null || countdown <= 0) return
+    const id = setTimeout(() => setCountdown(c => c - 1), 1000)
+    return () => clearTimeout(id)
+  }, [countdown])
+
+  useEffect(() => {
+    if (countdown !== 0) return
+    setPasoActual(0)
+    setCountdown(null)
+    setMensaje('Tiempo agotado. Volved a empezar la secuencia.')
+  }, [countdown])
+
+  const handlePasoCorrecto = () => {
+    if (pasoActual === secuencia.length - 1) {
+      onCorrecto()
+      return
+    }
+    const siguientePaso = secuencia[pasoActual + 1]
+    setMensaje(null)
+    setPasoActual(i => i + 1)
+    setCountdown(siguientePaso.tiempoLimite > 0 ? siguientePaso.tiempoLimite : null)
+  }
+
+  const paso = secuencia[pasoActual]
+
+  return (
+    <div className="secuencia-colaborativa">
+      <div className="secuencia__progreso">
+        Paso {pasoActual + 1} de {secuencia.length}
+      </div>
+      {mensaje && (
+        <p className="secuencia__mensaje-error">{mensaje}</p>
+      )}
+      {countdown !== null && (
+        <div className="secuencia__countdown">
+          Tiempo restante: <strong>{countdown}s</strong>
+        </div>
+      )}
+      <PasoInput key={pasoActual} paso={paso} onCorrecto={handlePasoCorrecto} />
+    </div>
+  )
+}
+
 // ─── Puzzle form ──────────────────────────────────────────────────────────────
 function PuzzleForm({ puzzle, onCorrecto }) {
   const [respuesta, setRespuesta] = useState('')
   const [error, setError] = useState(null)
+
+  if (
+    puzzle.tipoRespuesta === 'colaborativa' &&
+    puzzle.secuenciaOrdenada &&
+    puzzle.secuencia?.length > 0
+  ) {
+    return <SecuenciaColaborativa secuencia={puzzle.secuencia} onCorrecto={onCorrecto} />
+  }
 
   const submit = (e) => {
     e.preventDefault()

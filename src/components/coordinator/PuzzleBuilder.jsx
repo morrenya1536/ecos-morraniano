@@ -75,6 +75,8 @@ const PUZZLE_VACIO = {
   accesibilidadDaltonismo: '',
   accesibilidadSordera: '',
   accesibilidadMovilidad: '',
+  secuenciaOrdenada: false,
+  secuencia: [],
 }
 
 function FormPuzzle({ initial, onGuardar, onCancelar }) {
@@ -83,6 +85,19 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
   const [imagenPreview, setImagenPreview] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const updatePaso = (i, key, val) => setForm(f => ({
+    ...f,
+    secuencia: f.secuencia.map((p, j) => j === i ? { ...p, [key]: val } : p),
+  }))
+  const addPaso = () => setForm(f => ({
+    ...f,
+    secuencia: [...f.secuencia, { tipo: 'numerica', respuestaCorrecta: '', tiempoLimite: 0 }],
+  }))
+  const removePaso = (i) => setForm(f => ({
+    ...f,
+    secuencia: f.secuencia.filter((_, j) => j !== i),
+  }))
 
 
   const handleImagen = (e) => {
@@ -167,6 +182,79 @@ function FormPuzzle({ initial, onGuardar, onCancelar }) {
           />
         </div>
       </div>
+
+      {/* ── Secuencia colaborativa ──────────────────────────────── */}
+      {form.tipoRespuesta === 'colaborativa' && (
+        <div className="builder-form__section">
+          <p className="builder-form__section-title">Secuencia de pasos</p>
+          <div className="form__group form__group--row">
+            <label className="form__label">¿Secuencia ordenada?</label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={!!form.secuenciaOrdenada}
+                onChange={e => s('secuenciaOrdenada', e.target.checked)}
+              />
+              <span className="toggle__slider" />
+            </label>
+          </div>
+          {form.secuenciaOrdenada && (
+            <div className="secuencia-builder">
+              {(form.secuencia ?? []).map((paso, i) => (
+                <div key={i} className="secuencia-paso">
+                  <div className="secuencia-paso__header">
+                    <span className="secuencia-paso__num">Paso {i + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => removePaso(i)}
+                      className="btn btn--ghost btn--small btn--icon"
+                      title="Eliminar paso"
+                    >✕</button>
+                  </div>
+                  <div className="form-grid-2">
+                    <div className="form__group">
+                      <label className="form__label">Tipo de respuesta</label>
+                      <select
+                        value={paso.tipo}
+                        onChange={e => updatePaso(i, 'tipo', e.target.value)}
+                      >
+                        <option value="numerica">Numérica</option>
+                        <option value="texto_libre">Texto libre</option>
+                        <option value="escanear_qr">Escanear QR</option>
+                      </select>
+                    </div>
+                    <div className="form__group">
+                      <label className="form__label">Respuesta correcta</label>
+                      <input
+                        type="text"
+                        value={paso.respuestaCorrecta}
+                        onChange={e => updatePaso(i, 'respuestaCorrecta', e.target.value)}
+                        placeholder={
+                          paso.tipo === 'numerica' ? '42'
+                          : paso.tipo === 'escanear_qr' ? 'puntoId del QR'
+                          : 'respuesta...'
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="form__group" style={{ maxWidth: '220px' }}>
+                    <label className="form__label">Tiempo límite (seg, 0 = sin límite)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={paso.tiempoLimite}
+                      onChange={e => updatePaso(i, 'tiempoLimite', Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+              ))}
+              <button type="button" onClick={addPaso} className="btn btn--ghost btn--small">
+                + Añadir paso
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Ayudas ──────────────────────────────────────────────── */}
       <div className="builder-form__section">

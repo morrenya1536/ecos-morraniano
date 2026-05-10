@@ -2079,3 +2079,86 @@ select option { background: var(--color-surface); }
   font-size: 0.875rem;
 }
 .zona-input::placeholder { color: var(--color-text-muted); }
+
+/* ─── Prerequisitos de fases ─────────────────────────────────────────────── */
+.builder-form__section-help {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+.prerequisitos-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.prerequisito-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.prerequisito-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+/* ─── Secuencia colaborativa (builder) ───────────────────────────────────── */
+.secuencia-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.secuencia-paso {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.secuencia-paso__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.secuencia-paso__num {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ─── Secuencia colaborativa (jugador) ───────────────────────────────────── */
+.secuencia-colaborativa {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.secuencia__progreso {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+.secuencia__countdown {
+  text-align: center;
+  padding: 10px 16px;
+  background: rgba(255, 200, 0, 0.1);
+  border: 1px solid rgba(255, 200, 0, 0.3);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: #ffd500;
+}
+.secuencia__mensaje-error {
+  text-align: center;
+  padding: 10px 16px;
+  background: rgba(255, 60, 60, 0.1);
+  border: 1px solid rgba(255, 60, 60, 0.3);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: var(--color-error);
+}
